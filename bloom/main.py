@@ -7,6 +7,7 @@ environment variables for LLM providers and application settings.
 import os
 import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -58,6 +59,37 @@ def validate_api_keys():
 
 
 # ============================================================================
+# Lifespan Event Handler
+# ============================================================================
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Application lifespan events."""
+    # Startup
+    logger.info("🚀 Starting Bloom GCSE Mathematics Tutor...")
+    
+    # Validate API keys
+    try:
+        validate_api_keys()
+        logger.info("✓ Using LLM provider: %s (model: %s)", LLM_PROVIDER, LLM_MODEL)
+    except ValueError as e:
+        logger.warning("⚠️  %s", e)
+        logger.warning("   Set the appropriate API key environment variable before using the app.")
+    
+    # Initialize database
+    init_database(DATABASE_PATH)
+    logger.info("✓ Database initialized: %s", DATABASE_PATH)
+    logger.info("✓ Completion threshold: %s correct answers", COMPLETION_THRESHOLD)
+    logger.info("✓ Ready to serve requests at http://localhost:8000")
+    logger.info("   Note: Run 'uv run python -m bloom.load_syllabus' to load sample data if needed")
+    
+    yield
+    
+    # Shutdown
+    logger.info("👋 Shutting down Bloom...")
+
+
+# ============================================================================
 # FastAPI Application Setup
 # ============================================================================
 
@@ -65,6 +97,7 @@ app = FastAPI(
     title="Bloom GCSE Mathematics Tutor",
     description="AI-powered tutoring system for UK GCSE mathematics",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware (allow all origins for local demo)
@@ -85,37 +118,6 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 templates_path = Path(__file__).parent / "templates"
 templates_path.mkdir(exist_ok=True)
 templates = Jinja2Templates(directory=str(templates_path))
-
-
-# ============================================================================
-# Startup and Shutdown Events
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and validate configuration on startup."""
-    logger.info("🚀 Starting Bloom GCSE Mathematics Tutor...")
-    
-    # Validate API keys
-    try:
-        validate_api_keys()
-        logger.info(f"✓ Using LLM provider: {LLM_PROVIDER} (model: {LLM_MODEL})")
-    except ValueError as e:
-        logger.warning(f"⚠️  {e}")
-        logger.warning("   Set the appropriate API key environment variable before using the app.")
-    
-    # Initialize database
-    init_database(DATABASE_PATH)
-    logger.info(f"✓ Database initialized: {DATABASE_PATH}")
-    logger.info(f"✓ Completion threshold: {COMPLETION_THRESHOLD} correct answers")
-    logger.info("✓ Ready to serve requests at http://localhost:8000")
-    logger.info("   Note: Run 'uv run python -m bloom.load_syllabus' to load sample data if needed")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("👋 Shutting down Bloom...")
 
 
 # ============================================================================
