@@ -1,0 +1,35 @@
+<!-- Message bubble component -->
+{% if message.role == 'tutor' %}
+<!-- Tutor message (left-aligned, blue) -->
+<div class="flex items-start space-x-3">
+    <div class="flex-shrink-0">
+        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+            <span class="text-white text-sm font-bold">B</span>
+        </div>
+    </div>
+    <div class="flex-1 max-w-2xl">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <p class="text-sm font-semibold text-blue-900 mb-1">Bloom Tutor</p>
+            <div class="text-gray-800 prose prose-sm">{{ message.content }}</div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 ml-2">{{ message.timestamp[:16] }}</p>
+    </div>
+</div>
+{% else %}
+<!-- Student message (right-aligned, gray) -->
+<div class="flex items-start space-x-3 justify-end">
+    <div class="flex-1 max-w-2xl flex flex-col items-end">
+        <div class="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
+            <p class="text-sm font-semibold text-gray-900 mb-1">You</p>
+            <div class="text-gray-800">{{ message.content }}</div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 mr-2">{{ message.timestamp[:16] }}</p>
+    </div>
+    <div class="flex-shrink-0">
+        <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+            <span class="text-gray-700 text-sm font-bold">👤</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+

@@ -5,6 +5,7 @@ environment variables for LLM providers and application settings.
 """
 
 import os
+import logging
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from bloom.database import init_database
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("bloom")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -86,39 +94,39 @@ templates = Jinja2Templates(directory=str(templates_path))
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and validate configuration on startup."""
-    print("🚀 Starting Bloom GCSE Mathematics Tutor...")
+    logger.info("🚀 Starting Bloom GCSE Mathematics Tutor...")
     
     # Validate API keys
     try:
         validate_api_keys()
-        print(f"✓ Using LLM provider: {LLM_PROVIDER} (model: {LLM_MODEL})")
+        logger.info(f"✓ Using LLM provider: {LLM_PROVIDER} (model: {LLM_MODEL})")
     except ValueError as e:
-        print(f"⚠️  Warning: {e}")
-        print("   Set the appropriate API key environment variable before using the app.")
+        logger.warning(f"⚠️  {e}")
+        logger.warning("   Set the appropriate API key environment variable before using the app.")
     
     # Initialize database
     init_database(DATABASE_PATH)
-    
-    print(f"✓ Database: {DATABASE_PATH}")
-    print(f"✓ Completion threshold: {COMPLETION_THRESHOLD} correct answers")
-    print("✓ Ready to serve requests at http://localhost:8000")
+    logger.info(f"✓ Database initialized: {DATABASE_PATH}")
+    logger.info(f"✓ Completion threshold: {COMPLETION_THRESHOLD} correct answers")
+    logger.info("✓ Ready to serve requests at http://localhost:8000")
+    logger.info("   Note: Run 'uv run python -m bloom.load_syllabus' to load sample data if needed")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
-    print("👋 Shutting down Bloom...")
+    logger.info("👋 Shutting down Bloom...")
 
 
 # ============================================================================
-# Root Endpoint (Health Check)
+# Health Check Endpoint
 # ============================================================================
 
-@app.get("/")
-async def root():
-    """Root endpoint - returns API status."""
+@app.get("/health")
+async def health_check():
+    """Health check endpoint - returns API status."""
     return {
-        "status": "ok",
+        "status": "healthy",
         "app": "Bloom GCSE Mathematics Tutor",
         "version": "0.1.0",
         "llm_provider": LLM_PROVIDER,
@@ -126,18 +134,15 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
-
 # ============================================================================
 # Route Registration (imported after app creation to avoid circular imports)
 # ============================================================================
 
-# Routes will be imported and registered here in later tasks
-# from bloom.routes import student, admin
-# app.include_router(student.router)
+from bloom.routes import student
+
+app.include_router(student.router)
+
+# Admin routes will be added in Phase 4
+# from bloom.routes import admin
 # app.include_router(admin.router)
 

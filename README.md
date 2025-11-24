@@ -23,12 +23,8 @@ Bloom is an interactive mathematics tutor that uses LangGraph-powered AI agents 
 ### Installation
 
 ```bash
-# Install dependencies
-pip install -e .
-
-# Or using uv (faster)
-pip install uv
-uv pip install -e .
+# Install dependencies using uv
+uv sync
 ```
 
 ### Configuration
@@ -61,29 +57,33 @@ export COMPLETION_THRESHOLD="3"  # Correct answers for subtopic completion
 export DATABASE_PATH="bloom.db"  # SQLite database file
 ```
 
+### Database Setup (Required Before First Use)
+
+**Load the sample GCSE syllabus into the database:**
+
+```bash
+# Initialize database and load sample syllabus
+uv run python -m bloom.load_syllabus
+```
+
+This will:
+- ✓ Create the SQLite database (`bloom.db`)
+- ✓ Load 3 topics: Number, Algebra, Geometry
+- ✓ Load 10 subtopics with descriptions
+
+**Note:** You must run this command before starting the application for the first time. Without the syllabus data, you'll get "FOREIGN KEY constraint failed" errors when trying to start a tutoring session.
+
 ### Run the Application
 
 ```bash
-uvicorn bloom.main:app --reload
+# Start the development server
+uv run uvicorn bloom.main:app --reload
+
+# Or use FastAPI dev mode
+uv run fastapi dev bloom/main.py
 ```
 
 Open your browser to **http://localhost:8000**
-
-### Admin Setup: Load Syllabus
-
-Before students can use Bloom, load the GCSE mathematics syllabus:
-
-1. Navigate to **http://localhost:8000/admin**
-2. Click "Upload Syllabus"
-3. Select `syllabus_sample.json`
-4. Click "Load"
-
-Alternatively, use the API:
-
-```bash
-curl -X POST http://localhost:8000/admin/syllabus/upload \
-  -F "file=@syllabus_sample.json"
-```
 
 ## Using Bloom
 
@@ -238,21 +238,58 @@ export LLM_MODEL="gemini-1.5-flash"
 
 ## Troubleshooting
 
-### "No API key found"
+### "FOREIGN KEY constraint failed" when starting a session
 
-Set `OPENAI_API_KEY` environment variable and restart the app.
+**Problem:** The database doesn't have syllabus data loaded yet.
 
-### "No syllabus loaded"
+**Solution:** Run the database setup command:
 
-Navigate to `/admin` and upload `syllabus_sample.json`.
+```bash
+uv run python -m bloom.load_syllabus
+```
 
-### "LLM API failure"
+This must be done before using the app for the first time.
 
-Check [status.openai.com](https://status.openai.com/) and click "Retry" in the UI.
+### "No API key found" or API key warnings
+
+**Problem:** Missing or incorrect API key for your chosen LLM provider.
+
+**Solution:** 
+1. Check your `.env` file or environment variables
+2. Ensure `LLM_PROVIDER` matches your API key (e.g., if `LLM_PROVIDER=google`, you need `GOOGLE_API_KEY`)
+3. Restart the server after changing environment variables
+
+### "LLM API failure" or timeout errors
+
+**Problem:** LLM service unavailable or rate limited.
+
+**Solution:**
+1. Check the provider's status page:
+   - OpenAI: [status.openai.com](https://status.openai.com/)
+   - Anthropic: [status.anthropic.com](https://status.anthropic.com/)
+   - Google: [status.cloud.google.com](https://status.cloud.google.com/)
+2. Click the "🔄 Retry" button in the chat interface
+3. Wait a moment and try again
 
 ### Calculator not appearing
 
-Type your numerical answer directly in chat (calculator is optional).
+**Problem:** Calculator only shows for numerical problems (by design).
+
+**Solution:** This is expected behavior! Type your numerical answer directly in chat - the calculator is optional. It appears automatically for questions requiring calculation (e.g., "Calculate 3/4 + 2/5") but hides for algebraic questions (e.g., "Simplify 2x + 3x").
+
+### Port already in use (Address already in use)
+
+**Problem:** Another process is using port 8000.
+
+**Solution:**
+```bash
+# Use a different port
+uv run uvicorn bloom.main:app --reload --port 8001
+
+# Or find and kill the process using port 8000 (Windows)
+netstat -ano | findstr :8000
+taskkill /PID <process_id> /F
+```
 
 ## Documentation
 

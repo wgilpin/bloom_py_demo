@@ -135,3 +135,190 @@ class CalculatorRequest(BaseModel):
     expression: str = Field(..., min_length=1, description="Calculator expression")
     result: str = Field(..., description="Calculation result or 'Error'")
 
+
+# ============================================================================
+# Database Helper Functions
+# ============================================================================
+
+import sqlite3
+from datetime import datetime
+from typing import Optional
+from bloom.database import get_connection
+
+
+def create_session(subtopic_id: int, db_path: str = "bloom.db") -> int:
+    """Create a new tutoring session.
+    
+    Args:
+        subtopic_id: ID of the subtopic to study
+        db_path: Path to database file
+        
+    Returns:
+        session_id: ID of the created session
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    now = datetime.utcnow().isoformat()
+    cursor.execute("""
+        INSERT INTO sessions (subtopic_id, state, created_at, updated_at)
+        VALUES (?, 'active', ?, ?)
+    """, (subtopic_id, now, now))
+    
+    session_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return session_id
+
+
+def get_session(session_id: int, db_path: str = "bloom.db") -> Optional[dict]:
+    """Get session details by ID.
+    
+    Args:
+        session_id: Session ID to retrieve
+        db_path: Path to database file
+        
+    Returns:
+        Session data as dict or None if not found
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, subtopic_id, state, created_at, updated_at,
+               questions_attempted, questions_correct
+        FROM sessions
+        WHERE id = ?
+    """, (session_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "id": row["id"],
+            "subtopic_id": row["subtopic_id"],
+            "state": row["state"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "questions_attempted": row["questions_attempted"],
+            "questions_correct": row["questions_correct"],
+        }
+    return None
+
+
+def update_session(
+    session_id: int,
+    questions_attempted: Optional[int] = None,
+    questions_correct: Optional[int] = None,
+    state: Optional[str] = None,
+    db_path: str = "bloom.db"
+) -> None:
+    """Update session counters and state.
+    
+    Args:
+        session_id: Session ID to update
+        questions_attempted: New attempted count (or None to skip)
+        questions_correct: New correct count (or None to skip)
+        state: New state (or None to skip)
+        db_path: Path to database file
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    if questions_attempted is not None:
+        updates.append("questions_attempted = ?")
+        params.append(questions_attempted)
+    
+    if questions_correct is not None:
+        updates.append("questions_correct = ?")
+        params.append(questions_correct)
+    
+    if state is not None:
+        updates.append("state = ?")
+        params.append(state)
+    
+    # Always update timestamp
+    updates.append("updated_at = ?")
+    params.append(datetime.utcnow().isoformat())
+    
+    params.append(session_id)
+    
+    cursor.execute(f"""
+        UPDATE sessions
+        SET {', '.join(updates)}
+        WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+
+
+def add_message(
+    session_id: int,
+    role: str,
+    content: str,
+    db_path: str = "bloom.db"
+) -> int:
+    """Add a message to session history.
+    
+    Args:
+        session_id: Session ID
+        role: 'student' or 'tutor'
+        content: Message text
+        db_path: Path to database file
+        
+    Returns:
+        message_id: ID of the created message
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO messages (session_id, role, content, timestamp)
+        VALUES (?, ?, ?, ?)
+    """, (session_id, role, content, datetime.utcnow().isoformat()))
+    
+    message_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return message_id
+
+
+def get_messages_for_session(session_id: int, db_path: str = "bloom.db") -> list[dict]:
+    """Get all messages for a session, ordered by timestamp.
+    
+    Args:
+        session_id: Session ID
+        db_path: Path to database file
+        
+    Returns:
+        List of message dicts with role, content, timestamp
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, role, content, timestamp
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY timestamp ASC
+    """, (session_id,))
+    
+    messages = []
+    for row in cursor.fetchall():
+        messages.append({
+            "id": row["id"],
+            "role": row["role"],
+            "content": row["content"],
+            "timestamp": row["timestamp"],
+        })
+    
+    conn.close()
+    return messages
+

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - {{ subtopic_name }} | Bloom{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center space-x-4">
+    <span class="text-sm text-gray-600">Studying: <span class="font-semibold">{{ subtopic_name }}</span></span>
+    <a href="/" class="text-sm text-blue-600 hover:text-blue-800">← Back to Syllabus</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Chat Container -->
+    <div class="bg-white rounded-lg shadow-lg border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+        
+        <!-- Chat Header -->
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+            <h2 class="text-xl font-semibold text-gray-900">{{ subtopic_name }}</h2>
+            <p class="text-sm text-gray-600 mt-1">Your AI tutor is here to help you learn!</p>
+        </div>
+        
+        <!-- Messages Container -->
+        <div 
+            id="chat-messages" 
+            class="flex-1 overflow-y-auto p-6 space-y-4 chat-scroll"
+            hx-get="/chat/messages?session_id={{ session_id }}"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+        >
+            <!-- Messages will be loaded here via htmx -->
+            <div class="text-center text-gray-400 py-8">
+                <svg class="animate-spin h-8 w-8 mx-auto text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="mt-2">Loading conversation...</p>
+            </div>
+        </div>
+        
+        <!-- Calculator (conditionally visible) -->
+        {% if calculator_visible %}
+        <div id="calculator-container" class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div class="max-w-sm mx-auto">
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-right mb-3">
+                        <input 
+                            type="text" 
+                            id="calc-display" 
+                            readonly 
+                            value="0"
+                            class="w-full px-4 py-3 text-2xl font-mono text-right bg-gray-100 rounded border border-gray-300"
+                        >
+                    </div>
+                    <div class="grid grid-cols-4 gap-2">
+                        <!-- Calculator buttons -->
+                        <button class="calc-btn-clear" onclick="calcClear()">C</button>
+                        <button class="calc-btn-operator" onclick="calcAppend('/')">/</button>
+                        <button class="calc-btn-operator" onclick="calcAppend('*')">×</button>
+                        <button class="calc-btn-operator" onclick="calcAppend('-')">-</button>
+                        
+                        <button class="calc-btn-number" onclick="calcAppend('7')">7</button>
+                        <button class="calc-btn-number" onclick="calcAppend('8')">8</button>
+                        <button class="calc-btn-number" onclick="calcAppend('9')">9</button>
+                        <button class="calc-btn-operator" onclick="calcAppend('+')">+</button>
+                        
+                        <button class="calc-btn-number" onclick="calcAppend('4')">4</button>
+                        <button class="calc-btn-number" onclick="calcAppend('5')">5</button>
+                        <button class="calc-btn-number" onclick="calcAppend('6')">6</button>
+                        <button class="calc-btn-operator" onclick="calcAppend('(')">(</button>
+                        
+                        <button class="calc-btn-number" onclick="calcAppend('1')">1</button>
+                        <button class="calc-btn-number" onclick="calcAppend('2')">2</button>
+                        <button class="calc-btn-number" onclick="calcAppend('3')">3</button>
+                        <button class="calc-btn-operator" onclick="calcAppend(')')">)</button>
+                        
+                        <button class="calc-btn-number" onclick="calcAppend('0')">0</button>
+                        <button class="calc-btn-number" onclick="calcAppend('.')">.</button>
+                        <button class="calc-btn-equals col-span-2" onclick="calcEvaluate()">=</button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 text-center mt-2">Calculator is available for this question</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Message Input Form -->
+        <div class="px-6 py-4 border-t border-gray-200 bg-white">
+            <form 
+                hx-post="/chat/message"
+                hx-target="#chat-messages"
+                hx-swap="beforeend"
+                hx-on::after-request="document.getElementById('message-input').value = ''; scrollToBottom();"
+                class="flex space-x-3"
+            >
+                <input type="hidden" name="session_id" value="{{ session_id }}">
+                <input 
+                    type="text" 
+                    id="message-input"
+                    name="message" 
+                    placeholder="Type your answer or question..."
+                    required
+                    autocomplete="off"
+                    class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                <button 
+                    type="submit"
+                    class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                    Send
+                </button>
+            </form>
+            
+            <!-- Retry button (hidden by default, shown on error) -->
+            <div id="retry-container" class="mt-2 hidden">
+                <button 
+                    hx-post="/chat/retry"
+                    hx-vals='{"session_id": {{ session_id }}}'
+                    hx-target="#chat-messages"
+                    hx-swap="beforeend"
+                    class="text-sm text-blue-600 hover:text-blue-800"
+                >
+                    🔄 Retry last message
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Auto-scroll to bottom of chat
+    function scrollToBottom() {
+        const container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    // Scroll on initial load
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(scrollToBottom, 100);
+    });
+    
+    // Calculator functions
+    let calcExpression = '';
+    
+    function calcAppend(value) {
+        if (calcExpression === '0' || calcExpression === 'Error') {
+            calcExpression = value;
+        } else {
+            calcExpression += value;
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function calcClear() {
+        calcExpression = '0';
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function calcEvaluate() {
+        try {
+            // Sanitize input (only allow numbers and basic operators)
+            const sanitized = calcExpression.replace(/[^0-9+\-*/.()]/g, '');
+            
+            // Evaluate (note: eval is safe here because we sanitized input)
+            const result = eval(sanitized);
+            
+            calcExpression = result.toString();
+            document.getElementById('calc-display').value = calcExpression;
+            
+            // TODO: Log calculation to server
+            // This would be sent via htmx to /calculator/log endpoint
+        } catch (e) {
+            calcExpression = 'Error';
+            document.getElementById('calc-display').value = 'Error';
+        }
+    }
+</script>
+{% endblock %}
+

@@ -60,22 +60,22 @@
 
 ### Implementation for User Story 1
 
-- [ ] T015 [P] [US1] Create Session model methods in bloom/models.py (create_session, get_session, update_session)
-- [ ] T016 [P] [US1] Create Message model methods in bloom/models.py (add_message, get_messages_for_session)
-- [ ] T017 [US1] Implement multi-provider LLM client wrapper in bloom/tutor_agent.py supporting OpenAI, Anthropic, Google Gemini, and xAI Grok with retry logic and error handling (FR-018)
-- [ ] T018 [US1] Implement exposition_node in bloom/tutor_agent.py that generates concept explanation for subtopic
-- [ ] T019 [US1] Implement questioning_node in bloom/tutor_agent.py that generates appropriate GCSE-level questions
-- [ ] T020 [US1] Implement evaluation_node in bloom/tutor_agent.py that assesses answer correctness (FR-013)
-- [ ] T021 [US1] Implement diagnosis_node in bloom/tutor_agent.py that identifies student misconceptions
-- [ ] T022 [US1] Implement socratic_node in bloom/tutor_agent.py that asks guiding questions (FR-014)
-- [ ] T023 [US1] Create agent checkpoint save/restore functions in bloom/tutor_agent.py using agent_checkpoints table
-- [ ] T024 [US1] Create POST /session/start endpoint in bloom/routes/student.py that initializes session and agent state
-- [ ] T025 [US1] Create GET /chat endpoint in bloom/routes/student.py that renders chat interface
-- [ ] T026 [US1] Create POST /chat/message endpoint in bloom/routes/student.py that processes student input via agent
-- [ ] T027 [US1] Create GET /chat/messages endpoint in bloom/routes/student.py that returns message history as HTML fragments
-- [ ] T028 [US1] Create POST /chat/retry endpoint in bloom/routes/student.py for LLM failure retry (FR-018)
-- [ ] T029 [US1] Create chat.html template in bloom/templates/chat.html with htmx message form and history container
-- [ ] T030 [US1] Create message.html component in bloom/templates/components/message.html for rendering individual messages
+- [x] T015 [P] [US1] Create Session model methods in bloom/models.py (create_session, get_session, update_session)
+- [x] T016 [P] [US1] Create Message model methods in bloom/models.py (add_message, get_messages_for_session)
+- [x] T017 [US1] Implement multi-provider LLM client wrapper in bloom/tutor_agent.py supporting OpenAI, Anthropic, Google Gemini, and xAI Grok with retry logic and error handling (FR-018)
+- [x] T018 [US1] Implement exposition_node in bloom/tutor_agent.py that generates concept explanation for subtopic
+- [x] T019 [US1] Implement questioning_node in bloom/tutor_agent.py that generates appropriate GCSE-level questions
+- [x] T020 [US1] Implement evaluation_node in bloom/tutor_agent.py that assesses answer correctness (FR-013)
+- [x] T021 [US1] Implement diagnosis_node in bloom/tutor_agent.py that identifies student misconceptions
+- [x] T022 [US1] Implement socratic_node in bloom/tutor_agent.py that asks guiding questions (FR-014)
+- [x] T023 [US1] Create agent checkpoint save/restore functions in bloom/tutor_agent.py using agent_checkpoints table
+- [x] T024 [US1] Create POST /session/start endpoint in bloom/routes/student.py that initializes session and agent state
+- [x] T025 [US1] Create GET /chat endpoint in bloom/routes/student.py that renders chat interface
+- [x] T026 [US1] Create POST /chat/message endpoint in bloom/routes/student.py that processes student input via agent
+- [x] T027 [US1] Create GET /chat/messages endpoint in bloom/routes/student.py that returns message history as HTML fragments
+- [x] T028 [US1] Create POST /chat/retry endpoint in bloom/routes/student.py for LLM failure retry (FR-018)
+- [x] T029 [US1] Create chat.html template in bloom/templates/chat.html with htmx message form and history container
+- [x] T030 [US1] Create message.html component in bloom/templates/components/message.html for rendering individual messages
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

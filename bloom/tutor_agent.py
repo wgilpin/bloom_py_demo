@@ -431,7 +431,7 @@ Answer with only one word: NUMERICAL or NON_NUMERICAL"""
 # ============================================================================
 
 
-def create_tutor_graph() -> StateGraph:
+def create_tutor_graph():
     """Create the LangGraph state machine for tutoring.
 
     Returns:
@@ -460,3 +460,60 @@ def create_tutor_graph() -> StateGraph:
 
 # Initialize the graph
 tutor_graph = create_tutor_graph()
+
+
+# ============================================================================
+# Checkpoint Save/Restore Functions
+# ============================================================================
+
+def save_agent_checkpoint(session_id: int, state: TutorState, db_path: str = "bloom.db") -> None:
+    """Save agent state to database for session resumption.
+    
+    Args:
+        session_id: Session ID
+        state: Current agent state
+        db_path: Path to database file
+    """
+    import sqlite3
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    state_json = json.dumps(state)
+    
+    cursor.execute("""
+        INSERT OR REPLACE INTO agent_checkpoints (session_id, state_data)
+        VALUES (?, ?)
+    """, (session_id, state_json))
+    
+    conn.commit()
+    conn.close()
+
+
+def load_agent_checkpoint(session_id: int, db_path: str = "bloom.db") -> Optional[TutorState]:
+    """Load agent state from database.
+    
+    Args:
+        session_id: Session ID
+        db_path: Path to database file
+        
+    Returns:
+        Restored agent state or None if no checkpoint found
+    """
+    import sqlite3
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT state_data
+        FROM agent_checkpoints
+        WHERE session_id = ?
+    """, (session_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return json.loads(row[0])
+    return None
