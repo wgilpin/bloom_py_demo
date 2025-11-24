@@ -1,0 +1,560 @@
+openapi: 3.0.3
+info:
+  title: Bloom GCSE Mathematics Tutor API
+  description: |
+    FastAPI backend for Bloom tutoring application.
+    Uses htmx for frontend interactions - most endpoints return HTML fragments.
+  version: 1.0.0
+  contact:
+    name: Bloom Development Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: student
+    description: Student-facing endpoints (syllabus, chat, calculator)
+  - name: admin
+    description: Admin endpoints (syllabus management)
+  - name: session
+    description: Session management (start, resume, end)
+
+paths:
+  # =============================================================================
+  # STUDENT ENDPOINTS
+  # =============================================================================
+  
+  /:
+    get:
+      tags: [student]
+      summary: Landing page / syllabus view
+      description: |
+        Main entry point for students. Shows syllabus with topics, subtopics, and progress.
+        If an active session exists, prompts user to resume or start fresh.
+      responses:
+        '200':
+          description: HTML page with syllabus
+          content:
+            text/html:
+              schema:
+                type: string
+                example: "<html>...</html>"
+  
+  /syllabus:
+    get:
+      tags: [student]
+      summary: Get syllabus with progress
+      description: Returns full topic/subtopic structure with progress indicators
+      responses:
+        '200':
+          description: HTML fragment (for htmx) or full page
+          content:
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyllabusResponse'
+  
+  /session/start:
+    post:
+      tags: [session]
+      summary: Start new tutoring session
+      description: |
+        Creates a new session for specified subtopic.
+        If active session exists for different subtopic, marks it as abandoned.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [subtopic_id]
+              properties:
+                subtopic_id:
+                  type: integer
+                  example: 101
+      responses:
+        '200':
+          description: HTML chat interface
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Invalid subtopic ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /session/resume:
+    post:
+      tags: [session]
+      summary: Resume last active session
+      description: Restores conversation state from agent checkpoint
+      responses:
+        '200':
+          description: HTML chat interface with restored history
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: No active session found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /session/abandon:
+    post:
+      tags: [session]
+      summary: Mark current session as abandoned
+      description: Used when user chooses "Start Fresh" instead of resuming
+      responses:
+        '200':
+          description: Session abandoned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "abandoned"
+  
+  /chat:
+    get:
+      tags: [student]
+      summary: Chat interface page
+      description: Full-page chat UI for current session
+      responses:
+        '200':
+          description: HTML chat page
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: No active session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /chat/messages:
+    get:
+      tags: [student]
+      summary: Get chat message history
+      description: |
+        Returns messages for current session.
+        Used by htmx polling: `hx-get="/chat/messages" hx-trigger="every 2s"`
+      parameters:
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Session ID (if not active session)
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Only return messages after this timestamp
+      responses:
+        '200':
+          description: HTML fragment with message elements
+          content:
+            text/html:
+              schema:
+                type: string
+                example: |
+                  <div class="message tutor">
+                    <p>Let's work on fractions!</p>
+                    <span class="timestamp">14:32</span>
+                  </div>
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+  
+  /chat/message:
+    post:
+      tags: [student]
+      summary: Send student message
+      description: |
+        Student submits answer or question.
+        Triggers LangGraph agent to evaluate and respond.
+        Returns tutor's response + updated UI state (calculator visibility, etc.)
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  example: "1.15"
+      responses:
+        '200':
+          description: HTML fragment with tutor response and UI updates
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: LLM API failure (friendly error message per FR-018)
+          content:
+            text/html:
+              schema:
+                type: string
+                example: |
+                  <div class="alert error">
+                    I'm having trouble connecting. Please try again.
+                    <button hx-post="/chat/retry">Retry</button>
+                  </div>
+  
+  /chat/retry:
+    post:
+      tags: [student]
+      summary: Retry last LLM call after failure
+      description: Re-sends last student message to agent (FR-018)
+      responses:
+        '200':
+          description: Tutor response HTML fragment
+          content:
+            text/html:
+              schema:
+                type: string
+  
+  /calculator:
+    get:
+      tags: [student]
+      summary: Get calculator widget
+      description: |
+        Returns calculator HTML fragment.
+        Visibility controlled by server based on question type (FR-010, FR-011).
+      responses:
+        '200':
+          description: Calculator HTML or empty if hidden
+          content:
+            text/html:
+              schema:
+                type: string
+  
+  /calculator/compute:
+    post:
+      tags: [student]
+      summary: Evaluate calculator expression
+      description: |
+        Computes result and logs to calculator_history table.
+        Returns result to display in calculator.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [expression]
+              properties:
+                expression:
+                  type: string
+                  example: "3/4 + 2/5"
+      responses:
+        '200':
+          description: Calculation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    example: "1.15"
+        '400':
+          description: Invalid expression
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    example: "Error"
+  
+  /progress:
+    get:
+      tags: [student]
+      summary: Get progress overview
+      description: Returns progress for all subtopics (for syllabus view)
+      responses:
+        '200':
+          description: Progress data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubtopicProgress'
+  
+  # =============================================================================
+  # ADMIN ENDPOINTS
+  # =============================================================================
+  
+  /admin:
+    get:
+      tags: [admin]
+      summary: Admin dashboard
+      description: Simple admin page for syllabus management
+      responses:
+        '200':
+          description: Admin HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+  
+  /admin/syllabus/upload:
+    post:
+      tags: [admin]
+      summary: Load syllabus from JSON file
+      description: |
+        Validates JSON structure (FR-019) and loads into database.
+        Replaces existing topics/subtopics.
+        Preserves student progress data.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JSON file containing syllabus
+      responses:
+        '200':
+          description: Syllabus loaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Loaded 3 topics, 12 subtopics"
+        '400':
+          description: Validation error with specific details (FR-019)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+  
+  /admin/syllabus/validate:
+    post:
+      tags: [admin]
+      summary: Validate syllabus JSON without loading
+      description: Checks structure before committing to database
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Validation passed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  topics_count:
+                    type: integer
+                    example: 3
+                  subtopics_count:
+                    type: integer
+                    example: 12
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+  
+  /admin/progress/reset:
+    post:
+      tags: [admin]
+      summary: Reset all student progress
+      description: Clears progress, sessions, messages (for demo/testing)
+      responses:
+        '200':
+          description: Progress reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "reset_complete"
+
+# =============================================================================
+# SCHEMAS
+# =============================================================================
+
+components:
+  schemas:
+    SyllabusResponse:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Topic'
+    
+    Topic:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Number"
+        description:
+          type: string
+          example: "Number operations, fractions, percentages"
+        subtopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subtopic'
+        progress_percent:
+          type: number
+          format: float
+          example: 66.7
+          description: Aggregated progress from subtopics
+    
+    Subtopic:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 101
+        name:
+          type: string
+          example: "Operations with Fractions"
+        description:
+          type: string
+        questions_attempted:
+          type: integer
+          example: 5
+        questions_correct:
+          type: integer
+          example: 3
+        is_complete:
+          type: boolean
+          example: true
+    
+    SubtopicProgress:
+      type: object
+      properties:
+        subtopic_id:
+          type: integer
+          example: 101
+        questions_attempted:
+          type: integer
+          example: 5
+        questions_correct:
+          type: integer
+          example: 3
+        is_complete:
+          type: boolean
+          example: true
+        last_accessed:
+          type: string
+          format: date-time
+          example: "2025-11-24T14:30:00"
+    
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        role:
+          type: string
+          enum: [student, tutor]
+          example: "tutor"
+        content:
+          type: string
+          example: "Great job! Let's try another one."
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-24T14:32:15"
+    
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "No active session found"
+        code:
+          type: string
+          example: "SESSION_NOT_FOUND"
+    
+    ValidationError:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          example: false
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "topics[2].subtopics[0].id"
+              message:
+                type: string
+                example: "field required"
+        details:
+          type: string
+          example: "Missing 'id' field in Topic 3, Subtopic 1"
+
+# =============================================================================
+# SECURITY (for future)
+# =============================================================================
+
+# Note: Current demo has no authentication.
+# For production, add:
+# securitySchemes:
+#   bearerAuth:
+#     type: http
+#     scheme: bearer
+# security:
+#   - bearerAuth: []
+
