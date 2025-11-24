@@ -38,15 +38,15 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Create database schema in bloom/database.py with all 7 tables (topics, subtopics, sessions, messages, calculator_history, progress, agent_checkpoints)
-- [ ] T007 Implement database initialization function in bloom/database.py with PRAGMA foreign_keys = ON
-- [ ] T008 [P] Create Pydantic models in bloom/models.py (SyllabusSchema, TopicSchema, SubtopicSchema, SessionState)
-- [ ] T009 [P] Create FastAPI app in bloom/main.py with CORS middleware, static files mount, and templates config
-- [ ] T010 [P] Create base HTML template in bloom/templates/base.html with htmx CDN, Tailwind CDN, and base layout
-- [ ] T011 Create LangGraph agent structure in bloom/tutor_agent.py with 5 state nodes: exposition, questioning, evaluation, diagnosis, socratic
-- [ ] T012 Implement agent state transitions in bloom/tutor_agent.py with LangGraph StateGraph configuration
-- [ ] T013 [P] Create environment variable loading in bloom/main.py for LLM_PROVIDER, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, XAI_API_KEY, LLM_MODEL, DATABASE_PATH, COMPLETION_THRESHOLD
-- [ ] T014 [P] Create bloom/routes/__init__.py as empty module file
+- [x] T006 Create database schema in bloom/database.py with all 7 tables (topics, subtopics, sessions, messages, calculator_history, progress, agent_checkpoints)
+- [x] T007 Implement database initialization function in bloom/database.py with PRAGMA foreign_keys = ON
+- [x] T008 [P] Create Pydantic models in bloom/models.py (SyllabusSchema, TopicSchema, SubtopicSchema, SessionState)
+- [x] T009 [P] Create FastAPI app in bloom/main.py with CORS middleware, static files mount, and templates config
+- [x] T010 [P] Create base HTML template in bloom/templates/base.html with htmx CDN, Tailwind CDN, and base layout
+- [x] T011 Create LangGraph agent structure in bloom/tutor_agent.py with 5 state nodes: exposition, questioning, evaluation, diagnosis, socratic
+- [x] T012 Implement agent state transitions in bloom/tutor_agent.py with LangGraph StateGraph configuration
+- [x] T013 [P] Create environment variable loading in bloom/main.py for LLM_PROVIDER, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, XAI_API_KEY, LLM_MODEL, DATABASE_PATH, COMPLETION_THRESHOLD
+- [x] T014 [P] Create bloom/routes/__init__.py as empty module file
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

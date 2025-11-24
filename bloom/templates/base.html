@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Bloom - GCSE Maths Tutor{% endblock %}</title>
+    
+    <!-- Tailwind CSS (CDN for development) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- htmx for dynamic HTML -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom styles -->
+    <style>
+        /* Custom scrollbar for chat */
+        .chat-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-scroll::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .chat-scroll::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .chat-scroll::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        /* Smooth transitions */
+        .transition-all {
+            transition: all 0.3s ease;
+        }
+        
+        /* Calculator button styling */
+        .calc-btn {
+            @apply px-4 py-3 text-lg font-semibold rounded-lg shadow-sm hover:shadow-md transition-all;
+        }
+        .calc-btn-number {
+            @apply calc-btn bg-white text-gray-800 hover:bg-gray-50 border border-gray-300;
+        }
+        .calc-btn-operator {
+            @apply calc-btn bg-blue-500 text-white hover:bg-blue-600;
+        }
+        .calc-btn-equals {
+            @apply calc-btn bg-green-500 text-white hover:bg-green-600;
+        }
+        .calc-btn-clear {
+            @apply calc-btn bg-red-500 text-white hover:bg-red-600;
+        }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold text-xl">B</span>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">Bloom</h1>
+                        <p class="text-sm text-gray-500">GCSE Mathematics Tutor</p>
+                    </div>
+                </div>
+                
+                {% block header_actions %}{% endblock %}
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}
+        <!-- Page content goes here -->
+        {% endblock %}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="text-center text-sm text-gray-500">
+                <p>Bloom GCSE Mathematics Tutor &copy; 2024</p>
+                <p class="mt-1">Powered by AI | Built for UK GCSE Students</p>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Toast notification container (for error messages) -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2">
+        <!-- Toast messages will be inserted here via htmx -->
+    </div>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
+

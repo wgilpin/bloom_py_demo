@@ -1,5 +1,5 @@
 {
-  "title": "GCSE Mathematics (Foundation & Higher)",
+  "title": "GCSE Mathematics (Foundation Tier)",
   "topics": [
     {
       "id": 1,
@@ -9,22 +9,22 @@
         {
           "id": 101,
           "name": "Operations with Fractions",
-          "description": "Adding, subtracting, multiplying, and dividing fractions with different denominators"
+          "description": "Adding, subtracting, multiplying, and dividing fractions"
         },
         {
           "id": 102,
           "name": "Percentages",
-          "description": "Calculating percentages, percentage increase and decrease, reverse percentages"
+          "description": "Calculating percentages, percentage increase and decrease"
         },
         {
           "id": 103,
           "name": "Ratio and Proportion",
-          "description": "Simplifying ratios, sharing in a given ratio, direct and inverse proportion"
+          "description": "Understanding and applying ratios and proportional relationships"
         },
         {
           "id": 104,
-          "name": "Standard Form",
-          "description": "Writing numbers in standard form (scientific notation), calculations with standard form"
+          "name": "Decimals",
+          "description": "Working with decimal numbers and place value"
         }
       ]
     },
@@ -36,22 +36,17 @@
         {
           "id": 201,
           "name": "Solving Linear Equations",
-          "description": "Solving equations of the form ax + b = c, with brackets and fractions"
+          "description": "Solving equations of the form ax + b = c"
         },
         {
           "id": 202,
-          "name": "Quadratic Equations",
-          "description": "Factorising, completing the square, and using the quadratic formula"
+          "name": "Expanding and Factorising",
+          "description": "Expanding brackets and factorising expressions"
         },
         {
           "id": 203,
-          "name": "Simultaneous Equations",
-          "description": "Solving pairs of linear equations using elimination and substitution methods"
-        },
-        {
-          "id": 204,
           "name": "Sequences",
-          "description": "Arithmetic and geometric sequences, finding nth term, Fibonacci sequences"
+          "description": "Finding terms and rules for number sequences"
         }
       ]
     },
@@ -62,26 +57,20 @@
       "subtopics": [
         {
           "id": 301,
-          "name": "Angles",
-          "description": "Angle rules, parallel lines, polygons, and circle theorems"
+          "name": "Angles in Shapes",
+          "description": "Calculating angles in triangles, quadrilaterals, and polygons"
         },
         {
           "id": 302,
-          "name": "Pythagoras and Trigonometry",
-          "description": "Pythagoras' theorem, SOH-CAH-TOA, sine and cosine rules"
+          "name": "Pythagoras' Theorem",
+          "description": "Using Pythagoras' theorem to find missing sides in right-angled triangles"
         },
         {
           "id": 303,
-          "name": "Circles",
-          "description": "Circumference, area, arc length, sector area, circle theorems"
-        },
-        {
-          "id": 304,
-          "name": "Transformations",
-          "description": "Translations, rotations, reflections, enlargements, and combinations"
+          "name": "Area and Perimeter",
+          "description": "Calculating the area and perimeter of 2D shapes"
         }
       ]
     }
   ]
 }
-

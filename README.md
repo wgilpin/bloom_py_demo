@@ -33,6 +33,18 @@ uv pip install -e .
 
 ### Configuration
 
+Create a `.env` file from the template:
+
+```bash
+# Copy the example file
+cp env.example .env
+
+# Edit .env with your API key
+# The file includes detailed comments for each variable
+```
+
+Or set environment variables directly:
+
 ```bash
 # Choose your LLM provider (default: openai)
 export LLM_PROVIDER="openai"  # Options: openai, anthropic, google, xai
