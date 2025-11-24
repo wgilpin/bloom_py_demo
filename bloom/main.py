@@ -10,8 +10,12 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 from bloom.database import init_database
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 # ============================================================================
