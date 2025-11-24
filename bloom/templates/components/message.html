@@ -10,7 +10,7 @@
     <div class="flex-1 max-w-2xl">
         <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
             <p class="text-sm font-semibold text-blue-900 mb-1">Bloom Tutor</p>
-            <div class="text-gray-800 prose prose-sm">{{ message.content }}</div>
+            <div class="text-gray-800 prose prose-sm message-content">{{ message.content | safe }}</div>
         </div>
         <p class="text-xs text-gray-400 mt-1 ml-2">{{ message.timestamp[:16] }}</p>
     </div>

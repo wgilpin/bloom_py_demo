@@ -136,9 +136,25 @@
         container.scrollTop = container.scrollHeight;
     }
     
+    // Typeset math content when messages are loaded
+    function typeset() {
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
+        }
+    }
+    
     // Scroll on initial load
     document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(scrollToBottom, 100);
+        setTimeout(() => {
+            scrollToBottom();
+            typeset();
+        }, 100);
+    });
+    
+    // Re-typeset math after htmx swaps
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+        typeset();
+        scrollToBottom();
     });
     
     // Calculator functions
