@@ -5,24 +5,76 @@
 
 ## LLM Provider Selection
 
-### Decision: OpenAI GPT-4o-mini (with Anthropic Claude as optional alternative)
+### Decision: Multi-provider support (OpenAI, Anthropic, Google Gemini, xAI Grok)
 
 **Rationale**:
-- **Cost-effective for demo**: GPT-4o-mini offers good performance at low cost ($0.15/$0.60 per 1M tokens)
-- **Fast response times**: Typically 1-2 seconds, well within SC-005 requirement (< 3 seconds)
-- **Streaming support**: Can stream responses for better perceived performance
-- **Good at tutoring**: Strong reasoning capabilities for error diagnosis and Socratic questioning
-- **Ease of integration**: Official `openai` Python library, well-documented
+- **Flexibility**: Different providers have different strengths for educational content
+- **Cost optimization**: Allow switching based on budget and performance needs
+- **Resilience**: Fallback options if one provider has issues
+
+**Supported Providers**:
+
+1. **OpenAI GPT-4o-mini** (Primary recommendation)
+   - Cost-effective: $0.15/$0.60 per 1M tokens
+   - Fast response times: 1-2 seconds
+   - Strong reasoning for tutoring
+   - Official `openai` Python library
+
+2. **Anthropic Claude 3.5 Sonnet** (Premium option)
+   - Excellent reasoning, potentially better for education
+   - More expensive: $3/$15 per 1M tokens
+   - Good at following complex instructions
+   - Official `anthropic` Python library
+
+3. **Google Gemini 1.5 Flash** (Alternative)
+   - Cost-effective: $0.075/$0.30 per 1M tokens (cheaper than GPT-4o-mini)
+   - Fast response times
+   - Good multimodal capabilities (future: diagrams)
+   - Official `google-generativeai` Python library
+
+4. **xAI Grok** (Experimental)
+   - Competitive pricing
+   - OpenAI-compatible API
+   - Can use `openai` library with different base URL
 
 **Alternatives Considered**:
-- **Anthropic Claude 3.5 Sonnet**: Excellent reasoning, potentially better for education; more expensive ($3/$15 per 1M tokens) but worth testing if GPT-4o-mini insufficient
 - **Local models (Llama 3, Mistral)**: Rejected due to complexity (model hosting, GPU requirements) and constitution's "simplicity first" principle
 
 **Implementation Notes**:
-- Store API key in environment variable (`OPENAI_API_KEY`)
-- Use async client for non-blocking requests
+- Store API keys in environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`)
+- Use async clients for non-blocking requests
 - Implement retry logic with exponential backoff (FR-018: LLM failure handling)
-- Default to `gpt-4o-mini`, allow override via env var for testing alternatives
+- Provider selection via environment variable `LLM_PROVIDER` (default: openai)
+- Model selection via environment variable `LLM_MODEL`
+
+**Provider-Specific Implementation**:
+
+```python
+# OpenAI
+from openai import AsyncOpenAI
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Anthropic
+from anthropic import AsyncAnthropic
+client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Google Gemini
+import google.generativeai as genai
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+# xAI Grok (OpenAI-compatible API)
+from openai import AsyncOpenAI
+client = AsyncOpenAI(
+    api_key=os.getenv("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1"
+)
+```
+
+**Model Name Examples**:
+- OpenAI: `gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`
+- Anthropic: `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`
+- Google: `gemini-1.5-flash`, `gemini-1.5-pro`
+- xAI: `grok-beta`
 
 ---
 

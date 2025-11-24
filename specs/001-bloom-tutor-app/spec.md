@@ -157,7 +157,7 @@ When a student provides an incorrect answer, the tutor analyzes the type of erro
 
 ## Assumptions
 
-- The LLM provider (e.g., OpenAI, Anthropic) will be specified during planning—spec remains provider-agnostic
+- The system supports multiple LLM providers (OpenAI, Anthropic, Google Gemini, xAI Grok) with provider selection via environment variable
 - GCSE mathematics syllabus structure will follow standard UK examination board organization (AQA, Edexcel, OCR patterns) with a two-level hierarchy: topics (high-level categories) containing subtopics (specific learning units)
 - Single-user demo means no student accounts or authentication—students access the app directly
 - An "admin" role exists for setup/configuration purposes (loading syllabus), separate from the student experience

@@ -24,11 +24,11 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create bloom/ directory structure per implementation plan
-- [ ] T002 Initialize pyproject.toml with dependencies: fastapi, uvicorn[standard], langgraph, openai, anthropic, pydantic
-- [ ] T003 [P] Create README.md with quickstart instructions from quickstart.md
-- [ ] T004 [P] Create syllabus_sample.json with sample GCSE math syllabus (3 topics, 10 subtopics)
-- [ ] T005 [P] Create .gitignore with bloom.db, __pycache__, .env entries
+- [x] T001 Create bloom/ directory structure per implementation plan
+- [x] T002 Initialize pyproject.toml with dependencies: fastapi, uvicorn[standard], langgraph, openai, anthropic, google-generativeai, pydantic
+- [x] T003 [P] Create README.md with quickstart instructions from quickstart.md
+- [x] T004 [P] Create syllabus_sample.json with sample GCSE math syllabus (3 topics, 10 subtopics)
+- [x] T005 [P] Create .gitignore with bloom.db, __pycache__, .env entries
 
 ---
 
@@ -45,7 +45,7 @@
 - [ ] T010 [P] Create base HTML template in bloom/templates/base.html with htmx CDN, Tailwind CDN, and base layout
 - [ ] T011 Create LangGraph agent structure in bloom/tutor_agent.py with 5 state nodes: exposition, questioning, evaluation, diagnosis, socratic
 - [ ] T012 Implement agent state transitions in bloom/tutor_agent.py with LangGraph StateGraph configuration
-- [ ] T013 [P] Create environment variable loading in bloom/main.py for OPENAI_API_KEY, LLM_MODEL, DATABASE_PATH, COMPLETION_THRESHOLD
+- [ ] T013 [P] Create environment variable loading in bloom/main.py for LLM_PROVIDER, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, XAI_API_KEY, LLM_MODEL, DATABASE_PATH, COMPLETION_THRESHOLD
 - [ ] T014 [P] Create bloom/routes/__init__.py as empty module file
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -62,7 +62,7 @@
 
 - [ ] T015 [P] [US1] Create Session model methods in bloom/models.py (create_session, get_session, update_session)
 - [ ] T016 [P] [US1] Create Message model methods in bloom/models.py (add_message, get_messages_for_session)
-- [ ] T017 [US1] Implement OpenAI client wrapper in bloom/tutor_agent.py with retry logic and error handling (FR-018)
+- [ ] T017 [US1] Implement multi-provider LLM client wrapper in bloom/tutor_agent.py supporting OpenAI, Anthropic, Google Gemini, and xAI Grok with retry logic and error handling (FR-018)
 - [ ] T018 [US1] Implement exposition_node in bloom/tutor_agent.py that generates concept explanation for subtopic
 - [ ] T019 [US1] Implement questioning_node in bloom/tutor_agent.py that generates appropriate GCSE-level questions
 - [ ] T020 [US1] Implement evaluation_node in bloom/tutor_agent.py that assesses answer correctness (FR-013)

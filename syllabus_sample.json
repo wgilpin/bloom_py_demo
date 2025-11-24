@@ -1,0 +1,87 @@
+{
+  "title": "GCSE Mathematics (Foundation & Higher)",
+  "topics": [
+    {
+      "id": 1,
+      "name": "Number",
+      "description": "Number operations, fractions, percentages, ratio, and proportion",
+      "subtopics": [
+        {
+          "id": 101,
+          "name": "Operations with Fractions",
+          "description": "Adding, subtracting, multiplying, and dividing fractions with different denominators"
+        },
+        {
+          "id": 102,
+          "name": "Percentages",
+          "description": "Calculating percentages, percentage increase and decrease, reverse percentages"
+        },
+        {
+          "id": 103,
+          "name": "Ratio and Proportion",
+          "description": "Simplifying ratios, sharing in a given ratio, direct and inverse proportion"
+        },
+        {
+          "id": 104,
+          "name": "Standard Form",
+          "description": "Writing numbers in standard form (scientific notation), calculations with standard form"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Algebra",
+      "description": "Algebraic expressions, equations, graphs, and sequences",
+      "subtopics": [
+        {
+          "id": 201,
+          "name": "Solving Linear Equations",
+          "description": "Solving equations of the form ax + b = c, with brackets and fractions"
+        },
+        {
+          "id": 202,
+          "name": "Quadratic Equations",
+          "description": "Factorising, completing the square, and using the quadratic formula"
+        },
+        {
+          "id": 203,
+          "name": "Simultaneous Equations",
+          "description": "Solving pairs of linear equations using elimination and substitution methods"
+        },
+        {
+          "id": 204,
+          "name": "Sequences",
+          "description": "Arithmetic and geometric sequences, finding nth term, Fibonacci sequences"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Geometry",
+      "description": "Properties of shapes, angles, circles, and transformations",
+      "subtopics": [
+        {
+          "id": 301,
+          "name": "Angles",
+          "description": "Angle rules, parallel lines, polygons, and circle theorems"
+        },
+        {
+          "id": 302,
+          "name": "Pythagoras and Trigonometry",
+          "description": "Pythagoras' theorem, SOH-CAH-TOA, sine and cosine rules"
+        },
+        {
+          "id": 303,
+          "name": "Circles",
+          "description": "Circumference, area, arc length, sector area, circle theorems"
+        },
+        {
+          "id": 304,
+          "name": "Transformations",
+          "description": "Translations, rotations, reflections, enlargements, and combinations"
+        }
+      ]
+    }
+  ]
+}
+

@@ -18,7 +18,7 @@ Bloom is an AI-powered GCSE mathematics tutor that uses LLM agents to deliver pe
 - LangGraph (LLM agent workflow and state management)
 - SQLite (local persistence via Python's sqlite3)
 - Tailwind CSS + shadcn/ui (component styling)
-- LLM SDK (OpenAI/Anthropic - TBD in research phase)
+- LLM SDKs (OpenAI/Anthropic/Google Gemini/xAI Grok)
 
 **Storage**: SQLite database (local file: `bloom.db`)
 **Testing**: pytest (optional, per constitution - only for repeatedly broken logic)
