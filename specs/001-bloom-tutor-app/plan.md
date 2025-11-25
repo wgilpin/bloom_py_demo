@@ -123,7 +123,8 @@ bloom/
 └── templates/
     ├── base.html              # Base template with htmx
     ├── syllabus.html          # Topic/subtopic browser
-    ├── chat.html              # Chat interface with tutor
+    ├── chat.html              # Chat interface with tutor (includes "+ New Chat" button)
+    ├── admin.html             # Admin dashboard for syllabus management
     └── components/
         ├── calculator.html    # Calculator widget (htmx partial)
         ├── message.html       # Chat message component

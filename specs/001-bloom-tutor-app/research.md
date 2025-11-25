@@ -454,6 +454,22 @@ class SyllabusSchema(BaseModel):
 - **Always fresh**: Loses progress; violates FR-020 requirement
 - **Timeout-based**: Resume if < 1 hour old, else fresh; adds complexity (decision fatigue)
 
+### In-Session Navigation: "+ New Chat" Button
+
+**Requirement**: FR-021 - Students need ability to end current session and start a new topic without navigating away first
+
+**Implementation**:
+- Green "+ New Chat" button in chat interface header
+- Confirmation dialog: "End this session and start a new topic? Your progress will be saved."
+- On confirm: calls `/session/abandon` endpoint → redirects to homepage/syllabus
+- Progress preserved (session marked as "abandoned", not deleted)
+
+**UX Benefits**:
+- Reduces friction when student wants to switch topics mid-session
+- Clear visual affordance (green = new/create action)
+- Confirmation prevents accidental termination
+- Always visible in header (no need to hunt for exit)
+
 ---
 
 ## LLM Prompt Engineering

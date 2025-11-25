@@ -100,6 +100,7 @@ class SessionState(BaseModel):
         default_factory=list,
         description="Calculator operations (expression, result pairs)"
     )
+    hints_given: int = Field(default=0, ge=0, description="Count of Socratic hints given for current question")
     
     @field_validator('questions_correct')
     @classmethod
@@ -322,3 +323,136 @@ def get_messages_for_session(session_id: int, db_path: str = "bloom.db") -> list
     conn.close()
     return messages
 
+
+# ============================================================================
+# Progress Tracking Functions
+# ============================================================================
+
+def update_progress(
+    subtopic_id: int,
+    is_correct: bool,
+    completion_threshold: int = 3,
+    db_path: str = "bloom.db"
+) -> dict:
+    """Update progress for a subtopic after answering a question.
+    
+    Args:
+        subtopic_id: Subtopic ID to update
+        is_correct: Whether the answer was correct
+        completion_threshold: Number of correct answers needed for completion
+        db_path: Path to database file
+        
+    Returns:
+        Updated progress dict with keys: questions_attempted, questions_correct, is_complete
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    now = datetime.utcnow().isoformat()
+    correct_increment = 1 if is_correct else 0
+    
+    # Insert or update progress
+    cursor.execute("""
+        INSERT INTO progress (subtopic_id, questions_attempted, questions_correct, is_complete, last_accessed)
+        VALUES (?, 1, ?, 0, ?)
+        ON CONFLICT(subtopic_id) DO UPDATE SET
+            questions_attempted = questions_attempted + 1,
+            questions_correct = questions_correct + ?,
+            is_complete = CASE WHEN questions_correct + ? >= ? THEN 1 ELSE 0 END,
+            last_accessed = ?
+    """, (subtopic_id, correct_increment, now, correct_increment, correct_increment, completion_threshold, now))
+    
+    # Fetch updated progress
+    cursor.execute("""
+        SELECT questions_attempted, questions_correct, is_complete
+        FROM progress
+        WHERE subtopic_id = ?
+    """, (subtopic_id,))
+    
+    row = cursor.fetchone()
+    conn.commit()
+    conn.close()
+    
+    return {
+        "questions_attempted": row["questions_attempted"],
+        "questions_correct": row["questions_correct"],
+        "is_complete": bool(row["is_complete"]),
+    }
+
+
+def get_progress_for_subtopic(subtopic_id: int, db_path: str = "bloom.db") -> Optional[dict]:
+    """Get progress data for a specific subtopic.
+    
+    Args:
+        subtopic_id: Subtopic ID
+        db_path: Path to database file
+        
+    Returns:
+        Progress dict or None if no progress exists
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT subtopic_id, questions_attempted, questions_correct, is_complete, last_accessed
+        FROM progress
+        WHERE subtopic_id = ?
+    """, (subtopic_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "subtopic_id": row["subtopic_id"],
+            "questions_attempted": row["questions_attempted"],
+            "questions_correct": row["questions_correct"],
+            "is_complete": bool(row["is_complete"]),
+            "last_accessed": row["last_accessed"],
+        }
+    return None
+
+
+def aggregate_topic_progress(db_path: str = "bloom.db") -> list[dict]:
+    """Aggregate progress statistics at the topic level.
+    
+    Args:
+        db_path: Path to database file
+        
+    Returns:
+        List of topic progress dicts with keys:
+            - topic_id, topic_name, total_subtopics, completed_subtopics, completion_percent
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT 
+            t.id AS topic_id,
+            t.name AS topic_name,
+            COUNT(DISTINCT st.id) AS total_subtopics,
+            COALESCE(SUM(p.is_complete), 0) AS completed_subtopics,
+            CASE 
+                WHEN COUNT(DISTINCT st.id) > 0 
+                THEN CAST(COALESCE(SUM(p.is_complete), 0) AS FLOAT) / COUNT(DISTINCT st.id) * 100
+                ELSE 0
+            END AS completion_percent
+        FROM topics t
+        JOIN subtopics st ON st.topic_id = t.id
+        LEFT JOIN progress p ON p.subtopic_id = st.id
+        GROUP BY t.id, t.name
+        ORDER BY t.id
+    """)
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append({
+            "topic_id": row["topic_id"],
+            "topic_name": row["topic_name"],
+            "total_subtopics": row["total_subtopics"],
+            "completed_subtopics": row["completed_subtopics"],
+            "completion_percent": round(row["completion_percent"], 1),
+        })
+    
+    conn.close()
+    return results

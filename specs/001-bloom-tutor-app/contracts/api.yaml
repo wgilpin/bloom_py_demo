@@ -112,7 +112,8 @@ paths:
     post:
       tags: [session]
       summary: Mark current session as abandoned
-      description: Used when user chooses "Start Fresh" instead of resuming
+      description: |
+        Used when user chooses "Start Fresh" instead of resuming, or when user clicks the "+ New Chat" button during an active session to end it and start a new topic (FR-021)
       responses:
         '200':
           description: Session abandoned successfully
@@ -129,7 +130,8 @@ paths:
     get:
       tags: [student]
       summary: Chat interface page
-      description: Full-page chat UI for current session
+      description: |
+        Full-page chat UI for current session. Includes "+ New Chat" button in header to allow students to end the current session and return to syllabus (FR-021)
       responses:
         '200':
           description: HTML chat page

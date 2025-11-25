@@ -120,6 +120,61 @@ def init_database(db_path: str = "bloom.db") -> None:
     print(f"✓ Database initialized at {db_path}")
 
 
+def load_syllabus_from_json(syllabus_data: dict, db_path: str = "bloom.db") -> dict:
+    """Load syllabus topics and subtopics from validated JSON data.
+    
+    This function REPLACES existing topics/subtopics but PRESERVES progress data.
+    
+    Args:
+        syllabus_data: Validated syllabus dictionary (already validated by Pydantic)
+        db_path: Path to database file
+        
+    Returns:
+        Dictionary with counts: {"topics_loaded": int, "subtopics_loaded": int}
+        
+    Raises:
+        sqlite3.IntegrityError: If database constraints are violated
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    try:
+        # Clear existing syllabus data (cascade will handle subtopics)
+        # Note: Progress table is NOT deleted - students keep their progress
+        cursor.execute("DELETE FROM topics")
+        
+        topics_count = 0
+        subtopics_count = 0
+        
+        # Insert topics and subtopics from JSON
+        for topic in syllabus_data["topics"]:
+            cursor.execute(
+                "INSERT INTO topics (id, name, description) VALUES (?, ?, ?)",
+                (topic["id"], topic["name"], topic.get("description", ""))
+            )
+            topics_count += 1
+            
+            # Insert subtopics for this topic
+            for subtopic in topic["subtopics"]:
+                cursor.execute(
+                    "INSERT INTO subtopics (id, topic_id, name, description) VALUES (?, ?, ?, ?)",
+                    (subtopic["id"], topic["id"], subtopic["name"], subtopic.get("description", ""))
+                )
+                subtopics_count += 1
+        
+        conn.commit()
+        return {
+            "topics_loaded": topics_count,
+            "subtopics_loaded": subtopics_count
+        }
+        
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     # Allow direct execution for database setup
     init_database()

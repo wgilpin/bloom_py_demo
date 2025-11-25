@@ -89,21 +89,22 @@
 
 ### Implementation for User Story 2
 
-- [ ] T031 [P] [US2] Create syllabus loading function in bloom/database.py that validates and inserts topics/subtopics from JSON
-- [ ] T032 [P] [US2] Create progress tracking functions in bloom/models.py (update_progress, get_progress_for_subtopic, aggregate_topic_progress)
-- [ ] T033 [US2] Implement syllabus validation in bloom/routes/admin.py using Pydantic schemas with detailed error messages (FR-019)
-- [ ] T034 [US2] Create POST /admin/syllabus/upload endpoint in bloom/routes/admin.py that loads and validates JSON
-- [ ] T035 [US2] Create POST /admin/syllabus/validate endpoint in bloom/routes/admin.py for pre-validation without loading
-- [ ] T036 [US2] Create GET / endpoint in bloom/routes/student.py that shows syllabus with progress or resume prompt
-- [ ] T037 [US2] Create GET /syllabus endpoint in bloom/routes/student.py that returns topics/subtopics with progress data
-- [ ] T038 [US2] Create GET /progress endpoint in bloom/routes/student.py that returns progress summary JSON
-- [ ] T039 [US2] Create POST /session/resume endpoint in bloom/routes/student.py that restores session from checkpoint (FR-020)
-- [ ] T040 [US2] Create POST /session/abandon endpoint in bloom/routes/student.py for "Start Fresh" action
-- [ ] T041 [US2] Implement progress update logic in bloom/routes/student.py after each answer evaluation (FR-008: 3-5 correct = complete)
-- [ ] T042 [US2] Create syllabus.html template in bloom/templates/syllabus.html with topic/subtopic hierarchical display
-- [ ] T043 [US2] Create progress.html component in bloom/templates/components/progress.html with completion indicators
-- [ ] T044 [US2] Create admin.html template in bloom/templates/admin.html with syllabus upload form
-- [ ] T045 [US2] Add session resumption modal to base.html that prompts "Resume" or "Start Fresh" when active session exists
+- [x] T031 [P] [US2] Create syllabus loading function in bloom/database.py that validates and inserts topics/subtopics from JSON
+- [x] T032 [P] [US2] Create progress tracking functions in bloom/models.py (update_progress, get_progress_for_subtopic, aggregate_topic_progress)
+- [x] T033 [US2] Implement syllabus validation in bloom/routes/admin.py using Pydantic schemas with detailed error messages (FR-019)
+- [x] T034 [US2] Create POST /admin/syllabus/upload endpoint in bloom/routes/admin.py that loads and validates JSON
+- [x] T035 [US2] Create POST /admin/syllabus/validate endpoint in bloom/routes/admin.py for pre-validation without loading
+- [x] T036 [US2] Create GET / endpoint in bloom/routes/student.py that shows syllabus with progress or resume prompt
+- [x] T037 [US2] Create GET /syllabus endpoint in bloom/routes/student.py that returns topics/subtopics with progress data
+- [x] T038 [US2] Create GET /progress endpoint in bloom/routes/student.py that returns progress summary JSON
+- [x] T039 [US2] Create POST /session/resume endpoint in bloom/routes/student.py that restores session from checkpoint (FR-020)
+- [x] T040 [US2] Create POST /session/abandon endpoint in bloom/routes/student.py for "Start Fresh" action
+- [x] T041 [US2] Implement progress update logic in bloom/routes/student.py after each answer evaluation (FR-008: 3-5 correct = complete)
+- [x] T042 [US2] Create syllabus.html template in bloom/templates/syllabus.html with topic/subtopic hierarchical display
+- [x] T043 [US2] Create progress.html component in bloom/templates/components/progress.html with completion indicators
+- [x] T044 [US2] Create admin.html template in bloom/templates/admin.html with syllabus upload form
+- [x] T045 [US2] Add session resumption modal to base.html that prompts "Resume" or "Start Fresh" when active session exists
+- [x] T046 [US2] Add "+ New Chat" button to chat interface header that allows students to end current session and return to syllabus (FR-021)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -139,12 +140,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T055 [US4] Enhance evaluation_node in bloom/tutor_agent.py to classify answer as correct/partial/incorrect with detailed assessment
-- [ ] T056 [US4] Enhance diagnosis_node in bloom/tutor_agent.py to identify specific misconception types (e.g., "common denominator forgotten")
-- [ ] T057 [US4] Enhance socratic_node in bloom/tutor_agent.py to track hint count and escalate from subtle to explicit guidance
-- [ ] T058 [US4] Add state tracking in bloom/tutor_agent.py for hints_given counter in SessionState
-- [ ] T059 [US4] Implement "request full answer" detection in bloom/tutor_agent.py that provides step-by-step solution after 3 hints
-- [ ] T060 [US4] Update LLM prompts in bloom/tutor_agent.py to include Socratic teaching style and misconception examples from research.md
+- [x] T055 [US4] Enhance evaluation_node in bloom/tutor_agent.py to classify answer as correct/partial/incorrect with detailed assessment
+- [x] T056 [US4] Enhance diagnosis_node in bloom/tutor_agent.py to identify specific misconception types (e.g., "common denominator forgotten")
+- [x] T057 [US4] Enhance socratic_node in bloom/tutor_agent.py to track hint count and escalate from subtle to explicit guidance
+- [x] T058 [US4] Add state tracking in bloom/tutor_agent.py for hints_given counter in SessionState
+- [x] T059 [US4] Implement "request full answer" detection in bloom/tutor_agent.py that provides step-by-step solution after 3 hints
+- [x] T060 [US4] Update LLM prompts in bloom/tutor_agent.py to include Socratic teaching style and misconception examples from research.md
 
 **Checkpoint**: All user stories should now be complete with enhanced pedagogy
 
@@ -323,16 +324,16 @@ With multiple developers:
 ## Success Metrics
 
 **Task Metrics**:
-- Total tasks: 70
+- Total tasks: 71
 - Setup tasks: 5
 - Foundational tasks: 9 (blocking)
 - User Story 1 (P1): 16 tasks
-- User Story 2 (P2): 15 tasks  
+- User Story 2 (P2): 16 tasks  
 - User Story 3 (P3): 9 tasks
 - User Story 4 (P4): 6 tasks
 - Polish tasks: 10 tasks
 
-**Parallel Opportunities**: 23 tasks marked [P] can run in parallel (33% of tasks)
+**Parallel Opportunities**: 23 tasks marked [P] can run in parallel (32% of tasks)
 
 **Independent Test Coverage**:
 - ✓ Each user story has explicit independent test criteria
@@ -343,7 +344,7 @@ With multiple developers:
 - ✓ No test tasks (tests optional per constitution)
 - ✓ Direct SQL (no ORM)
 - ✓ Minimal boilerplate (FastAPI + htmx, no React)
-- ✓ Focused scope (70 tasks total for complete feature)
+- ✓ Focused scope (71 tasks total for complete feature)
 
 ---
 

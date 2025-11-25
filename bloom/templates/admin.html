@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel | Bloom{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Admin Header -->
+    <div class="bg-gradient-to-r from-purple-600 to-indigo-700 rounded-lg shadow-lg p-8 text-white mb-8">
+        <h1 class="text-4xl font-bold mb-3">Admin Panel 🔧</h1>
+        <p class="text-xl text-purple-50">Manage syllabus and student data</p>
+    </div>
+    
+    <!-- Navigation -->
+    <div class="mb-6">
+        <a 
+            href="/" 
+            class="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium"
+        >
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back to Student View
+        </a>
+    </div>
+    
+    <!-- Syllabus Upload Section -->
+    <div class="bg-white rounded-lg shadow-md border border-gray-200 mb-6">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-900">Syllabus Management</h2>
+            <p class="text-sm text-gray-600 mt-1">Upload a JSON syllabus file to replace the current syllabus</p>
+        </div>
+        
+        <div class="p-6">
+            <!-- Upload Form -->
+            <form 
+                id="uploadForm" 
+                enctype="multipart/form-data"
+                class="mb-4"
+            >
+                <div class="flex items-center gap-4">
+                    <div class="flex-1">
+                        <label class="block">
+                            <span class="sr-only">Choose syllabus file</span>
+                            <input 
+                                type="file" 
+                                id="syllabusFile"
+                                accept=".json,application/json"
+                                class="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-lg file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-blue-50 file:text-blue-700
+                                    hover:file:bg-blue-100
+                                    cursor-pointer"
+                                required
+                            >
+                        </label>
+                    </div>
+                    
+                    <button 
+                        type="button"
+                        onclick="validateSyllabus()"
+                        class="px-6 py-2 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                        Validate
+                    </button>
+                    
+                    <button 
+                        type="button"
+                        onclick="uploadSyllabus()"
+                        class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Upload
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Status Messages -->
+            <div id="statusMessage" class="hidden"></div>
+            
+            <!-- Validation Preview -->
+            <div id="validationPreview" class="hidden mt-6">
+                <h3 class="font-semibold text-gray-900 mb-3">Validation Preview:</h3>
+                <div id="validationContent" class="bg-gray-50 border border-gray-200 rounded-lg p-4"></div>
+            </div>
+            
+            <!-- Info Box -->
+            <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 class="font-semibold text-blue-900 mb-2">Expected JSON Format:</h4>
+                <pre class="text-xs text-blue-800 overflow-x-auto"><code>{
+  "title": "GCSE Mathematics",
+  "topics": [
+    {
+      "id": 1,
+      "name": "Number",
+      "description": "Number operations and properties",
+      "subtopics": [
+        {
+          "id": 101,
+          "name": "Operations with Fractions",
+          "description": "Adding, subtracting, multiplying, dividing"
+        }
+      ]
+    }
+  ]
+}</code></pre>
+                <p class="text-sm text-blue-700 mt-3">
+                    <strong>Note:</strong> Uploading a new syllabus replaces existing topics/subtopics but preserves student progress.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Danger Zone -->
+    <div class="bg-white rounded-lg shadow-md border border-red-300 mb-6">
+        <div class="px-6 py-4 bg-red-50 border-b border-red-200">
+            <h2 class="text-2xl font-bold text-red-900">Danger Zone ⚠️</h2>
+        </div>
+        
+        <div class="p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div class="flex-1">
+                    <h3 class="font-semibold text-gray-900 mb-1">Reset All Progress</h3>
+                    <p class="text-sm text-gray-600">
+                        Permanently delete all student progress and session data. This action cannot be undone.
+                    </p>
+                </div>
+                
+                <button 
+                    onclick="confirmReset()"
+                    class="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
+                >
+                    Reset Progress
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Links -->
+    <div class="grid grid-cols-2 gap-4">
+        <a 
+            href="/health"
+            target="_blank"
+            class="block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-center"
+        >
+            <div class="text-2xl mb-2">🏥</div>
+            <div class="font-semibold text-gray-900">Health Check</div>
+            <div class="text-sm text-gray-600">API status</div>
+        </a>
+        
+        <a 
+            href="/docs"
+            target="_blank"
+            class="block p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-center"
+        >
+            <div class="text-2xl mb-2">📚</div>
+            <div class="font-semibold text-gray-900">API Docs</div>
+            <div class="text-sm text-gray-600">OpenAPI documentation</div>
+        </a>
+    </div>
+</div>
+
+<script>
+// Validation
+async function validateSyllabus() {
+    const fileInput = document.getElementById('syllabusFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showStatus('error', 'Please select a file first');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    showStatus('loading', 'Validating...');
+    
+    try {
+        const response = await fetch('/admin/syllabus/validate', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'valid') {
+            showStatus('success', `✓ Valid syllabus: ${result.topics_count} topics, ${result.subtopics_count} subtopics`);
+            showValidationPreview(result);
+        } else {
+            showStatus('error', `✗ Validation failed: ${result.message}`);
+            if (result.errors) {
+                showValidationErrors(result.errors);
+            }
+        }
+    } catch (error) {
+        showStatus('error', `✗ Error: ${error.message}`);
+    }
+}
+
+// Upload
+async function uploadSyllabus() {
+    const fileInput = document.getElementById('syllabusFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showStatus('error', 'Please select a file first');
+        return;
+    }
+    
+    if (!confirm('This will replace the current syllabus. Student progress will be preserved. Continue?')) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    showStatus('loading', 'Uploading and loading syllabus...');
+    
+    try {
+        const response = await fetch('/admin/syllabus/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showStatus('success', `✓ Syllabus loaded successfully! ${result.topics_loaded} topics, ${result.subtopics_loaded} subtopics`);
+            document.getElementById('validationPreview').classList.add('hidden');
+            fileInput.value = '';
+        } else {
+            showStatus('error', `✗ Upload failed: ${result.detail?.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        showStatus('error', `✗ Error: ${error.message}`);
+    }
+}
+
+// Reset progress
+async function confirmReset() {
+    if (!confirm('⚠️ WARNING: This will permanently delete ALL student progress and session data.\n\nThis action CANNOT be undone.\n\nAre you absolutely sure?')) {
+        return;
+    }
+    
+    if (!confirm('Final confirmation: Delete all progress?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/progress/reset', {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert('✓ All progress and sessions have been cleared.');
+        } else {
+            alert(`✗ Failed to reset: ${result.message}`);
+        }
+    } catch (error) {
+        alert(`✗ Error: ${error.message}`);
+    }
+}
+
+// UI Helpers
+function showStatus(type, message) {
+    const statusEl = document.getElementById('statusMessage');
+    statusEl.classList.remove('hidden', 'bg-blue-50', 'bg-green-50', 'bg-red-50', 'border-blue-200', 'border-green-200', 'border-red-200', 'text-blue-800', 'text-green-800', 'text-red-800');
+    
+    if (type === 'loading') {
+        statusEl.className = 'bg-blue-50 border border-blue-200 text-blue-800 rounded-lg p-4';
+    } else if (type === 'success') {
+        statusEl.className = 'bg-green-50 border border-green-200 text-green-800 rounded-lg p-4';
+    } else if (type === 'error') {
+        statusEl.className = 'bg-red-50 border border-red-200 text-red-800 rounded-lg p-4';
+    }
+    
+    statusEl.textContent = message;
+}
+
+function showValidationPreview(data) {
+    const previewEl = document.getElementById('validationPreview');
+    const contentEl = document.getElementById('validationContent');
+    
+    let html = `<p class="font-semibold mb-2">${data.title}</p><ul class="list-disc list-inside space-y-1 text-sm">`;
+    data.topics.forEach(topic => {
+        html += `<li><strong>${topic.name}</strong>: ${topic.subtopics_count} subtopics</li>`;
+    });
+    html += '</ul>';
+    
+    contentEl.innerHTML = html;
+    previewEl.classList.remove('hidden');
+}
+
+function showValidationErrors(errors) {
+    const contentEl = document.getElementById('validationContent');
+    
+    let html = '<ul class="list-disc list-inside space-y-1 text-sm text-red-700">';
+    errors.forEach(error => {
+        html += `<li><strong>${error.field}</strong>: ${error.message}</li>`;
+    });
+    html += '</ul>';
+    
+    contentEl.innerHTML = html;
+    document.getElementById('validationPreview').classList.remove('hidden');
+}
+</script>
+{% endblock %}
+

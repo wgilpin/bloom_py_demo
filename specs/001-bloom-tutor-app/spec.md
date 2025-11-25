@@ -111,6 +111,7 @@ When a student provides an incorrect answer, the tutor analyzes the type of erro
 - **FR-008**: System MUST track student progress for each subtopic in the syllabus, including number of questions attempted and completion status (subtopic marked complete after 3-5 correct answers), with topic-level progress aggregated from subtopic data
 - **FR-009**: System MUST persist progress data and active session state (including conversation history and context) to a local SQLite database so it survives app restarts
 - **FR-020**: System MUST offer students the option to resume their last active session (restoring full conversation state) or start a new session when returning to the app
+- **FR-021**: System MUST provide an in-chat action button allowing students to end the current session and start a new topic at any time, with confirmation to prevent accidental termination, while preserving progress data
 - **FR-010**: System MUST provide an integrated calculator widget that appears automatically when the current question or problem requires numerical computation
 - **FR-011**: System MUST hide the calculator widget when the current question involves non-numerical work (e.g., algebraic manipulation, geometric reasoning, conceptual understanding)
 - **FR-012**: System MUST record calculator operations performed by the student for potential reference by the tutoring logic

@@ -140,11 +140,8 @@ async def health_check():
 # Route Registration (imported after app creation to avoid circular imports)
 # ============================================================================
 
-from bloom.routes import student
+from bloom.routes import student, admin
 
 app.include_router(student.router)
-
-# Admin routes will be added in Phase 4
-# from bloom.routes import admin
-# app.include_router(admin.router)
+app.include_router(admin.router)
 

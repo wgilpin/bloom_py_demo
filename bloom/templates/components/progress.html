@@ -1,0 +1,40 @@
+<!-- Progress Component for Subtopic -->
+<!-- Usage: Include with context: subtopic (dict with questions_correct, questions_attempted, is_complete) -->
+
+{% if subtopic.questions_attempted > 0 %}
+<div class="flex items-center gap-2 text-xs mt-2">
+    <!-- Completion Badge -->
+    {% if subtopic.is_complete %}
+    <span class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-full font-semibold">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        Complete
+    </span>
+    {% else %}
+    <span class="text-gray-600">
+        {{ subtopic.questions_correct }}/{{ subtopic.questions_attempted }} correct
+    </span>
+    {% endif %}
+    
+    <!-- Progress Bar -->
+    <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[120px]">
+        {% set progress_pct = (subtopic.questions_correct / subtopic.questions_attempted * 100) | int %}
+        <div 
+            class="h-full transition-all duration-300 {% if subtopic.is_complete %}bg-green-500{% else %}bg-blue-500{% endif %}"
+            style="width: {{ progress_pct }}%"
+        ></div>
+    </div>
+    
+    <!-- Percentage -->
+    <span class="text-gray-500 font-medium">
+        {{ progress_pct }}%
+    </span>
+</div>
+{% else %}
+<!-- Not started yet -->
+<div class="text-xs text-gray-400 mt-2">
+    Not started
+</div>
+{% endif %}
+

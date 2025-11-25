@@ -10,8 +10,6 @@ This module handles:
 import logging
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from pathlib import Path
 from datetime import datetime
 
 from bloom.models import (
@@ -23,7 +21,6 @@ from bloom.models import (
 )
 from bloom.tutor_agent import (
     TutorState,
-    tutor_graph,
     save_agent_checkpoint,
     load_agent_checkpoint,
 )
@@ -36,49 +33,140 @@ router = APIRouter(prefix="", tags=["student"])
 
 
 # ============================================================================
-# Homepage (Temporary - will be replaced by full syllabus in Phase 4)
+# Homepage & Syllabus Navigation
 # ============================================================================
 
 @router.get("/", response_class=HTMLResponse)
 async def homepage(request: Request):
-    """Temporary homepage with hardcoded subtopics for testing Phase 3."""
+    """Homepage with syllabus navigation and session resumption check."""
+    from bloom.database import get_connection
     
-    # Hardcoded sample topics for Phase 3 testing
-    sample_topics = [
-        {
-            "id": 1,
-            "name": "Number",
-            "subtopics": [
-                {"id": 101, "name": "Operations with Fractions"},
-                {"id": 102, "name": "Percentages"},
-                {"id": 103, "name": "Ratio and Proportion"},
-            ]
-        },
-        {
-            "id": 2,
-            "name": "Algebra",
-            "subtopics": [
-                {"id": 201, "name": "Solving Linear Equations"},
-                {"id": 202, "name": "Expanding and Factorising"},
-            ]
-        },
-        {
-            "id": 3,
-            "name": "Geometry",
-            "subtopics": [
-                {"id": 301, "name": "Angles in Shapes"},
-                {"id": 302, "name": "Pythagoras' Theorem"},
-            ]
-        }
-    ]
+    # Check for active session
+    conn = get_connection(DATABASE_PATH)
+    cursor = conn.cursor()
     
+    cursor.execute("""
+        SELECT id, subtopic_id, created_at, updated_at
+        FROM sessions
+        WHERE state = 'active'
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """)
+    
+    active_session = cursor.fetchone()
+    
+    if active_session:
+        # Get subtopic name for the active session
+        cursor.execute("""
+            SELECT st.name, t.name as topic_name
+            FROM subtopics st
+            JOIN topics t ON t.id = st.topic_id
+            WHERE st.id = ?
+        """, (active_session["subtopic_id"],))
+        
+        subtopic_info = cursor.fetchone()
+        
+        conn.close()
+        
+        # Show resumption prompt
+        return templates.TemplateResponse(
+            "homepage.html",
+            {
+                "request": request,
+                "active_session": {
+                    "id": active_session["id"],
+                    "subtopic_id": active_session["subtopic_id"],
+                    "subtopic_name": subtopic_info["name"] if subtopic_info else "Unknown",
+                    "topic_name": subtopic_info["topic_name"] if subtopic_info else "Unknown",
+                    "updated_at": active_session["updated_at"],
+                }
+            }
+        )
+    
+    conn.close()
+    
+    # No active session, show syllabus
     return templates.TemplateResponse(
         "homepage.html",
         {
             "request": request,
-            "topics": sample_topics,
+            "active_session": None,
         }
     )
+
+
+@router.get("/syllabus", response_class=HTMLResponse)
+async def get_syllabus(request: Request):
+    """Get full syllabus with progress data (HTML for htmx)."""
+    from bloom.database import get_connection
+    
+    conn = get_connection(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    # Load topics with subtopics and progress
+    cursor.execute("""
+        SELECT 
+            t.id AS topic_id,
+            t.name AS topic_name,
+            t.description AS topic_description,
+            st.id AS subtopic_id,
+            st.name AS subtopic_name,
+            st.description AS subtopic_description,
+            COALESCE(p.questions_correct, 0) AS questions_correct,
+            COALESCE(p.questions_attempted, 0) AS questions_attempted,
+            COALESCE(p.is_complete, 0) AS is_complete
+        FROM topics t
+        JOIN subtopics st ON st.topic_id = t.id
+        LEFT JOIN progress p ON p.subtopic_id = st.id
+        ORDER BY t.id, st.id
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Group by topics
+    topics_dict = {}
+    for row in rows:
+        topic_id = row["topic_id"]
+        
+        if topic_id not in topics_dict:
+            topics_dict[topic_id] = {
+                "id": topic_id,
+                "name": row["topic_name"],
+                "description": row["topic_description"],
+                "subtopics": []
+            }
+        
+        topics_dict[topic_id]["subtopics"].append({
+            "id": row["subtopic_id"],
+            "name": row["subtopic_name"],
+            "description": row["subtopic_description"],
+            "questions_correct": row["questions_correct"],
+            "questions_attempted": row["questions_attempted"],
+            "is_complete": bool(row["is_complete"]),
+        })
+    
+    topics = list(topics_dict.values())
+    
+    return templates.TemplateResponse(
+        "syllabus.html",
+        {
+            "request": request,
+            "topics": topics
+        }
+    )
+
+
+@router.get("/progress")
+async def get_progress():
+    """Get progress summary for all topics."""
+    from bloom.models import aggregate_topic_progress
+    
+    topic_progress = aggregate_topic_progress(DATABASE_PATH)
+    
+    return {
+        "topic_progress": topic_progress
+    }
 
 
 # ============================================================================
@@ -117,6 +205,7 @@ async def start_session(
             "calculator_history": [],
             "last_question": None,
             "last_evaluation": None,
+            "hints_given": 0,
         }
         
         # Run agent to generate initial exposition
@@ -157,6 +246,127 @@ async def start_session(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to start session: {str(e)}"
+        )
+
+
+@router.post("/session/resume")
+async def resume_session(request: Request, session_id: int = Form(...)):
+    """Resume an active session from checkpoint (FR-020).
+    
+    Restores agent state and redirects to chat interface.
+    """
+    logger.info(f"Resuming session {session_id}")
+    
+    try:
+        # Verify session exists and is active
+        session = get_session(session_id, DATABASE_PATH)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if session["state"] != "active":
+            raise HTTPException(status_code=400, detail="Session is not active")
+        
+        # Load agent checkpoint
+        state = load_agent_checkpoint(session_id, DATABASE_PATH)
+        if not state:
+            raise HTTPException(status_code=500, detail="Agent state not found")
+        
+        # Get subtopic name
+        from bloom.database import get_connection
+        conn = get_connection(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT st.name
+            FROM subtopics st
+            WHERE st.id = ?
+        """, (session["subtopic_id"],))
+        
+        subtopic_row = cursor.fetchone()
+        conn.close()
+        
+        subtopic_name = subtopic_row["name"] if subtopic_row else f"Subtopic {session['subtopic_id']}"
+        
+        logger.info(f"Session {session_id} resumed successfully")
+        
+        # Redirect to chat interface
+        return templates.TemplateResponse(
+            "chat.html",
+            {
+                "request": request,
+                "session_id": session_id,
+                "subtopic_name": subtopic_name,
+                "calculator_visible": state.get("calculator_visible", False),
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resume session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to resume session: {str(e)}"
+        )
+
+
+@router.post("/session/abandon")
+async def abandon_session(session_id: int = Form(None)):
+    """Abandon active session(s) (Start Fresh action).
+    
+    If session_id is provided, abandons that specific session.
+    If session_id is None/not provided, abandons ALL active sessions.
+    Marks session(s) as abandoned without deleting data.
+    """
+    from bloom.database import get_connection
+    
+    try:
+        conn = get_connection(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        if session_id:
+            # Abandon specific session
+            logger.info(f"Abandoning session {session_id}")
+            
+            # Verify session exists
+            session = get_session(session_id, DATABASE_PATH)
+            if not session:
+                conn.close()
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Mark session as abandoned
+            update_session(session_id, state="abandoned", db_path=DATABASE_PATH)
+            logger.info(f"Session {session_id} marked as abandoned")
+            abandoned_count = 1
+        else:
+            # Abandon ALL active sessions
+            logger.info("Abandoning all active sessions")
+            
+            cursor.execute("""
+                UPDATE sessions
+                SET state = 'abandoned', updated_at = ?
+                WHERE state = 'active'
+            """, (datetime.utcnow().isoformat(),))
+            
+            abandoned_count = cursor.rowcount
+            conn.commit()
+            logger.info(f"Abandoned {abandoned_count} active session(s)")
+        
+        conn.close()
+        
+        return {
+            "status": "success", 
+            "message": f"Abandoned {abandoned_count} session(s)",
+            "count": abandoned_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to abandon session(s): {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to abandon session(s): {str(e)}"
         )
 
 
@@ -234,6 +444,9 @@ async def post_chat_message(
             logger.error(f"Agent state not found for session {session_id}")
             raise HTTPException(status_code=500, detail="Agent state not found")
         
+        # Get message count BEFORE adding student message (for rendering later)
+        existing_db_count = len(get_messages_for_session(session_id, DATABASE_PATH))
+        
         # Add student message to state and database
         state["messages"].append({
             "role": "student",
@@ -249,12 +462,11 @@ async def post_chat_message(
         from bloom.tutor_agent import (
             questioning_node,
             evaluation_node,
-            diagnosis_node,
             socratic_node,
-            exposition_node,
         )
         
         current_state = state["current_state"]
+        logger.info("Current agent state: %s (routing to appropriate node)", current_state)
         
         # Route to appropriate node
         if current_state == "exposition":
@@ -281,10 +493,32 @@ async def post_chat_message(
             db_path=DATABASE_PATH
         )
         
+        # Update progress after evaluation (FR-008: 3-5 correct = complete)
+        if current_state in ["questioning", "socratic"]:
+            # Only update progress when student answered a question
+            from bloom.models import update_progress
+            from bloom.main import COMPLETION_THRESHOLD
+            
+            # Check if this was an evaluation that updated the counters
+            prev_attempted = session["questions_attempted"]
+            new_attempted = state["questions_attempted"]
+            
+            if new_attempted > prev_attempted:
+                # A question was answered
+                prev_correct = session["questions_correct"]
+                new_correct = state["questions_correct"]
+                is_correct = new_correct > prev_correct
+                
+                update_progress(
+                    session["subtopic_id"],
+                    is_correct,
+                    COMPLETION_THRESHOLD,
+                    DATABASE_PATH
+                )
+        
         # Save new tutor messages to database
-        # Get only messages added since we last saved
-        existing_count = len(get_messages_for_session(session_id, DATABASE_PATH))
-        new_messages = state["messages"][existing_count:]
+        # Get messages added since the original count (includes student message + tutor responses)
+        new_messages = state["messages"][existing_db_count:]
         
         for msg in new_messages:
             if msg["role"] == "tutor":  # Student message already added
@@ -298,7 +532,7 @@ async def post_chat_message(
         # Save updated agent checkpoint
         save_agent_checkpoint(session_id, state, DATABASE_PATH)
         
-        # Return only the new tutor message(s) as HTML
+        # Return ALL new messages (student + tutor) as HTML
         html_parts = []
         for msg in new_messages:
             html_parts.append(templates.get_template("components/message.html").render(

@@ -5,8 +5,32 @@
 {% block header_actions %}
 <div class="flex items-center space-x-4">
     <span class="text-sm text-gray-600">Studying: <span class="font-semibold">{{ subtopic_name }}</span></span>
+    <button 
+        onclick="startNewChat()"
+        class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+    >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+        New Chat
+    </button>
     <a href="/" class="text-sm text-blue-600 hover:text-blue-800">← Back to Syllabus</a>
 </div>
+
+<script>
+function startNewChat() {
+    if (confirm('End this session and start a new topic?\n\nYour progress will be saved.')) {
+        // Abandon ALL active sessions (empty body = abandon all)
+        fetch('/session/abandon', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: ''
+        }).then(() => {
+            window.location.href = '/';
+        });
+    }
+}
+</script>
 {% endblock %}
 
 {% block content %}
