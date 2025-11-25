@@ -21,7 +21,9 @@ from bloom.main import (
     ANTHROPIC_API_KEY,
     GOOGLE_API_KEY,
     XAI_API_KEY,
+    DATABASE_PATH,
 )
+from bloom.database import get_cached_exposition, save_cached_exposition
 
 # Configure logger for state machine
 logger = logging.getLogger("bloom.tutor_agent")
@@ -153,10 +155,11 @@ llm_client = LLMClient()
 
 
 async def exposition_node(state: TutorState) -> TutorState:
-    """Generate concept explanation for the current subtopic.
+    """Generate or retrieve cached concept explanation for the current subtopic.
 
     This is typically the first state in a tutoring session.
     Uses Socratic principles: guide discovery, build on existing knowledge.
+    Checks cache first to reduce API costs and improve response time.
     """
     logger.info("→ ENTERING STATE: exposition (subtopic: %s)", state.get('subtopic_name', 'Unknown'))
     
@@ -164,8 +167,29 @@ async def exposition_node(state: TutorState) -> TutorState:
     if "hints_given" not in state:
         state["hints_given"] = 0
     
-    # Socratic teaching principles from docs/socratic_approach.md
-    prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
+    subtopic_id = state["subtopic_id"]
+    
+    # Check cache first
+    cached = get_cached_exposition(subtopic_id, DATABASE_PATH)
+    
+    if cached:
+        # Cache hit - use cached content
+        exposition = cached["exposition_content"]
+        logger.info("✓ Cache HIT for subtopic %s (model: %s)", subtopic_id, cached['model_identifier'])
+        
+        # Add tutor message to history
+        state["messages"].append(
+            {"role": "tutor", "content": exposition, "timestamp": datetime.utcnow().isoformat()}
+        )
+        
+        logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
+        
+    else:
+        # Cache miss - generate via LLM
+        logger.info("✗ Cache MISS for subtopic %s, generating new exposition", subtopic_id)
+        
+        # Socratic teaching principles from docs/socratic_approach.md
+        prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
 
 CORE PHILOSOPHY - SOCRATIC METHOD:
 You are a Facilitator, not an Instructor. Your goal is to help students construct mental models themselves through guided discovery.
@@ -186,29 +210,38 @@ Your task: Provide a clear, engaging explanation of {state['subtopic_name']}.
 
 Do NOT ask a practice question yet - just explain the concept clearly."""
 
-    try:
-        explanation = await llm_client.generate(prompt)
+        try:
+            exposition = await llm_client.generate(prompt)
 
-        # Add tutor message to history
-        state["messages"].append(
-            {"role": "tutor", "content": explanation, "timestamp": datetime.utcnow().isoformat()}
-        )
+            # Save to cache after successful generation
+            save_cached_exposition(
+                subtopic_id=subtopic_id,
+                content=exposition,
+                model_identifier=LLM_MODEL,
+                db_path=DATABASE_PATH
+            )
+            logger.info("✓ Cached new exposition for subtopic %s", subtopic_id)
 
-        # Stay in exposition state - wait for student to request a question
-        # Don't change state here; the routing logic will handle the transition
-        # state["current_state"] remains "exposition"
-        logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
+            # Add tutor message to history
+            state["messages"].append(
+                {"role": "tutor", "content": exposition, "timestamp": datetime.utcnow().isoformat()}
+            )
 
-    except Exception as e:
-        logger.error("Exposition failed: %s", str(e))
-        # Error handling
-        state["messages"].append(
-            {
-                "role": "tutor",
-                "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+            # Stay in exposition state - wait for student to request a question
+            # Don't change state here; the routing logic will handle the transition
+            # state["current_state"] remains "exposition"
+            logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
+
+        except Exception as e:
+            logger.error("Exposition generation failed: %s", str(e))
+            # Error handling
+            state["messages"].append(
+                {
+                    "role": "tutor",
+                    "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
     return state
 

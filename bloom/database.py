@@ -27,7 +27,7 @@ def get_connection(db_path: str = "bloom.db") -> sqlite3.Connection:
 def init_database(db_path: str = "bloom.db") -> None:
     """Initialize database schema if not exists.
     
-    Creates all 7 tables required for the tutoring system:
+    Creates all 8 tables required for the tutoring system:
     - topics: High-level syllabus categories
     - subtopics: Specific learning units within topics
     - sessions: Tutoring sessions for subtopics
@@ -35,6 +35,7 @@ def init_database(db_path: str = "bloom.db") -> None:
     - calculator_history: Calculator operations log
     - progress: Per-subtopic completion tracking
     - agent_checkpoints: LangGraph state persistence
+    - cached_expositions: Cached lesson expositions for API cost reduction
     
     Args:
         db_path: Path to SQLite database file
@@ -113,6 +114,15 @@ def init_database(db_path: str = "bloom.db") -> None:
             state_data TEXT NOT NULL,
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
+        
+        -- Cached lesson expositions for API cost reduction
+        CREATE TABLE IF NOT EXISTS cached_expositions (
+            subtopic_id INTEGER PRIMARY KEY,
+            exposition_content TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            model_identifier TEXT NOT NULL,
+            FOREIGN KEY (subtopic_id) REFERENCES subtopics(id) ON DELETE CASCADE
+        );
     """)
     
     conn.commit()
@@ -173,6 +183,66 @@ def load_syllabus_from_json(syllabus_data: dict, db_path: str = "bloom.db") -> d
         raise e
     finally:
         conn.close()
+
+
+def get_cached_exposition(subtopic_id: int, db_path: str = "bloom.db") -> Optional[dict]:
+    """Retrieve cached exposition for a subtopic.
+    
+    Args:
+        subtopic_id: Subtopic ID to look up
+        db_path: Path to database file
+        
+    Returns:
+        Dict with keys {exposition_content, generated_at, model_identifier} or None if not cached
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT exposition_content, generated_at, model_identifier
+        FROM cached_expositions
+        WHERE subtopic_id = ?
+    """, (subtopic_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "exposition_content": row["exposition_content"],
+            "generated_at": row["generated_at"],
+            "model_identifier": row["model_identifier"],
+        }
+    return None
+
+
+def save_cached_exposition(
+    subtopic_id: int,
+    content: str,
+    model_identifier: str,
+    db_path: str = "bloom.db"
+) -> None:
+    """Save generated exposition to cache.
+    
+    Args:
+        subtopic_id: Subtopic ID this exposition belongs to
+        content: Full text of the exposition
+        model_identifier: LLM model used (e.g., "gpt-4")
+        db_path: Path to database file
+    """
+    from datetime import datetime, UTC
+    
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT OR REPLACE INTO cached_expositions 
+        (subtopic_id, exposition_content, generated_at, model_identifier)
+        VALUES (?, ?, ?, ?)
+    """, (subtopic_id, content, datetime.now(UTC).isoformat(), model_identifier))
+    
+    conn.commit()
+    conn.close()
 
 
 if __name__ == "__main__":
