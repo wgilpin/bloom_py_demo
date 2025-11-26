@@ -413,3 +413,4 @@ This data model extends the existing Bloom schema with minimal changes:
 
 Design aligns with constitution's simplicity principles: no ORM, direct SQL, minimal abstraction.
 
+

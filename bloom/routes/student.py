@@ -458,32 +458,105 @@ async def post_chat_message(
         # Update last_student_answer for evaluation
         state["last_student_answer"] = message
         
-        # Determine next node based on current state
+        # Import nodes and routing functions
         from bloom.tutor_agent import (
+            exposition_node,
             questioning_node,
             evaluation_node,
+            diagnosis_node,
             socratic_node,
+            route_from_exposition,
+            route_from_questioning,
+            route_from_evaluation,
+            route_from_diagnosis,
+            route_from_socratic,
         )
         
-        current_state = state["current_state"]
-        logger.info("Current agent state: %s (routing to appropriate node)", current_state)
+        # Map node names to functions
+        node_map = {
+            "exposition": exposition_node,
+            "questioning": questioning_node,
+            "evaluation": evaluation_node,
+            "diagnosis": diagnosis_node,
+            "socratic": socratic_node,
+        }
         
-        # Route to appropriate node
+        # Map node names to routing functions
+        route_map = {
+            "exposition": route_from_exposition,
+            "questioning": route_from_questioning,
+            "evaluation": route_from_evaluation,
+            "diagnosis": route_from_diagnosis,
+            "socratic": route_from_socratic,
+        }
+        
+        current_state = state["current_state"]
+        logger.info("Current agent state: %s (invoking graph from this node)", current_state)
+        
+        # For exposition state, check if student is requesting a question
+        # If so, skip re-running exposition and go straight to questioning
         if current_state == "exposition":
-            # After exposition, student asks question or we move to questioning
-            state = await questioning_node(state)
+            route_func = route_map.get("exposition")
+            if route_func:
+                next_node = route_func(state)
+                logger.info(f"Routing decision from exposition: exposition → {next_node}")
+                
+                if next_node == "questioning":
+                    # Student requested question, go straight to questioning
+                    state["current_state"] = "questioning"
+                    current_state = "questioning"
+                elif next_node == "END":
+                    # Student still in dialogue, stay in exposition (already has messages)
+                    logger.info("Student still in dialogue, staying in exposition")
+                    # Don't execute anything, just return current state
+                    # Update session and save state at the end
+                    pass
+        
+        # For questioning state, student has submitted an answer - move to evaluation
         elif current_state == "questioning":
-            # Student answered, evaluate it
-            state = await evaluation_node(state)
-        elif current_state == "evaluation":
-            # After evaluation, either question again or diagnose
-            # (evaluation_node already transitions)
-            pass
-        elif current_state == "diagnosis":
-            state = await socratic_node(state)
-        elif current_state == "socratic":
-            # Student tried again after hint
-            state = await evaluation_node(state)
+            logger.info("Student submitted answer, transitioning to evaluation")
+            state["current_state"] = "evaluation"
+            current_state = "evaluation"
+        
+        # Execute graph flow using conditional routing
+        # Continue until we reach END (wait for next student message)
+        max_iterations = 10  # Prevent infinite loops
+        iteration = 0
+        
+        while iteration < max_iterations and current_state != "exposition":
+            # Get current node
+            node_name = state["current_state"]
+            
+            if node_name not in node_map:
+                logger.error(f"Unknown node: {node_name}")
+                break
+            
+            # Execute current node
+            node_func = node_map[node_name]
+            logger.info(f"Executing node: {node_name}")
+            state = await node_func(state)
+            
+            # Determine next node using routing function
+            route_func = route_map.get(node_name)
+            if route_func:
+                next_node = route_func(state)
+                logger.info(f"Routing decision: {node_name} → {next_node}")
+                
+                if next_node == "END" or next_node == "__end__":
+                    # Graph execution complete - waiting for student
+                    logger.info("Graph execution complete (reached END)")
+                    break
+                
+                # Update state to next node
+                state["current_state"] = next_node
+            else:
+                logger.warning(f"No routing function for {node_name}")
+                break
+            
+            iteration += 1
+        
+        if iteration >= max_iterations:
+            logger.error("Graph execution hit max iterations - possible infinite loop")
         
         # Update session counters
         update_session(
@@ -494,27 +567,27 @@ async def post_chat_message(
         )
         
         # Update progress after evaluation (FR-008: 3-5 correct = complete)
-        if current_state in ["questioning", "socratic"]:
-            # Only update progress when student answered a question
-            from bloom.models import update_progress
-            from bloom.main import COMPLETION_THRESHOLD
+        # Check if a question was evaluated in this turn
+        from bloom.models import update_progress
+        from bloom.main import COMPLETION_THRESHOLD
+        
+        prev_attempted = session["questions_attempted"]
+        new_attempted = state["questions_attempted"]
+        
+        if new_attempted > prev_attempted:
+            # A question was evaluated in this turn
+            prev_correct = session["questions_correct"]
+            new_correct = state["questions_correct"]
+            is_correct = new_correct > prev_correct
             
-            # Check if this was an evaluation that updated the counters
-            prev_attempted = session["questions_attempted"]
-            new_attempted = state["questions_attempted"]
+            logger.info(f"Question evaluated: correct={is_correct}, total={new_correct}/{new_attempted}")
             
-            if new_attempted > prev_attempted:
-                # A question was answered
-                prev_correct = session["questions_correct"]
-                new_correct = state["questions_correct"]
-                is_correct = new_correct > prev_correct
-                
-                update_progress(
-                    session["subtopic_id"],
-                    is_correct,
-                    COMPLETION_THRESHOLD,
-                    DATABASE_PATH
-                )
+            update_progress(
+                session["subtopic_id"],
+                is_correct,
+                COMPLETION_THRESHOLD,
+                DATABASE_PATH
+            )
         
         # Save new tutor messages to database
         # Get messages added since the original count (includes student message + tutor responses)
