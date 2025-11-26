@@ -21,7 +21,9 @@ from bloom.main import (
     ANTHROPIC_API_KEY,
     GOOGLE_API_KEY,
     XAI_API_KEY,
+    DATABASE_PATH,
 )
+from bloom.database import get_cached_exposition, save_cached_exposition
 
 # Configure logger for state machine
 logger = logging.getLogger("bloom.tutor_agent")
@@ -171,13 +173,27 @@ llm_client = LLMClient()
 
 
 async def exposition_node(state: TutorState) -> TutorState:
-    """Generate concept explanation for the current subtopic.
+    """Generate or retrieve cached concept explanation for the current subtopic.
 
     This is typically the first state in a tutoring session.
+    Checks cache before generating to reduce LLM API costs.
     """
     logger.info("→ ENTERING STATE: exposition (subtopic: %s)", state.get('subtopic_name', 'Unknown'))
     
-    prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
+    subtopic_id = state["subtopic_id"]
+    
+    # NEW: Check cache first
+    cached = get_cached_exposition(subtopic_id, DATABASE_PATH)
+    
+    if cached:
+        # Cache hit - use cached content
+        explanation = cached["exposition_content"]
+        logger.info(f"✓ Cache HIT for subtopic {subtopic_id} (model: {cached['model_identifier']})")
+    else:
+        # Cache miss - generate via LLM
+        logger.info(f"✗ Cache MISS for subtopic {subtopic_id}, generating new exposition")
+        
+        prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
 
 Your task: Provide a clear, engaging explanation of this topic.
 - Use friendly, age-appropriate language (14-16 years old)
@@ -187,28 +203,37 @@ Your task: Provide a clear, engaging explanation of this topic.
 
 Do NOT ask a practice question yet - just explain the concept clearly."""
 
-    try:
-        explanation = await llm_client.generate(prompt)
+        try:
+            explanation = await llm_client.generate(prompt)
+            
+            # NEW: Save to cache after successful generation
+            save_cached_exposition(
+                subtopic_id=subtopic_id,
+                content=explanation,
+                model_identifier=LLM_MODEL,
+                db_path=DATABASE_PATH
+            )
+            logger.info(f"✓ Cached new exposition for subtopic {subtopic_id}")
+            
+        except Exception as e:
+            # Error handling
+            logger.error("Exposition generation failed: %s", str(e))
+            state["messages"].append(
+                {
+                    "role": "tutor",
+                    "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            return state
 
-        # Add tutor message to history
-        state["messages"].append(
-            {"role": "tutor", "content": explanation, "timestamp": datetime.utcnow().isoformat()}
-        )
+    # Add message to state (whether cached or freshly generated)
+    state["messages"].append(
+        {"role": "tutor", "content": explanation, "timestamp": datetime.utcnow().isoformat()}
+    )
 
-        # Stay in exposition state - wait for student to request a question
-        # Don't change state here; the routing logic will handle the transition
-        # state["current_state"] remains "exposition"
-        logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
-
-    except Exception as e:
-        # Error handling
-        state["messages"].append(
-            {
-                "role": "tutor",
-                "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+    # Stay in exposition state - wait for student to request a question
+    logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
 
     return state
 
