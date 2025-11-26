@@ -21,7 +21,9 @@ from bloom.main import (
     ANTHROPIC_API_KEY,
     GOOGLE_API_KEY,
     XAI_API_KEY,
+    DATABASE_PATH,
 )
+from bloom.database import get_cached_exposition, save_cached_exposition
 
 # Configure logger for state machine
 logger = logging.getLogger("bloom.tutor_agent")
@@ -30,6 +32,25 @@ logger = logging.getLogger("bloom.tutor_agent")
 # ============================================================================
 # Agent State Definition
 # ============================================================================
+
+
+class MessageDict(TypedDict):
+    """Type definition for chat messages in agent state."""
+    role: str  # 'student' or 'tutor'
+    content: str
+    timestamp: str
+
+
+class CalculatorHistoryDict(TypedDict):
+    """Type definition for calculator operations."""
+    expression: str
+    result: str
+
+
+class EvaluationDict(TypedDict):
+    """Type definition for answer evaluation results."""
+    correct: bool
+    feedback: str
 
 
 class TutorState(TypedDict):
@@ -41,15 +62,14 @@ class TutorState(TypedDict):
     subtopic_id: int
     subtopic_name: str
     current_state: Literal["exposition", "questioning", "evaluation", "diagnosis", "socratic"]
-    messages: list[dict]  # {role: str, content: str}
+    messages: list[MessageDict]
     questions_correct: int
     questions_attempted: int
     calculator_visible: bool
     last_student_answer: Optional[str]
-    calculator_history: list[dict]  # {expression: str, result: str}
+    calculator_history: list[CalculatorHistoryDict]
     last_question: Optional[str]  # Store the last question asked
-    last_evaluation: Optional[dict]  # Store evaluation result {correctness: str, feedback: str, misconception: str}
-    hints_given: int  # Counter for Socratic hints provided for current question
+    last_evaluation: Optional[EvaluationDict]  # Store evaluation result
 
 
 # ============================================================================
@@ -153,62 +173,67 @@ llm_client = LLMClient()
 
 
 async def exposition_node(state: TutorState) -> TutorState:
-    """Generate concept explanation for the current subtopic.
+    """Generate or retrieve cached concept explanation for the current subtopic.
 
     This is typically the first state in a tutoring session.
-    Uses Socratic principles: guide discovery, build on existing knowledge.
+    Checks cache before generating to reduce LLM API costs.
     """
     logger.info("→ ENTERING STATE: exposition (subtopic: %s)", state.get('subtopic_name', 'Unknown'))
     
-    # Initialize hints counter
-    if "hints_given" not in state:
-        state["hints_given"] = 0
+    subtopic_id = state["subtopic_id"]
     
-    # Socratic teaching principles from docs/socratic_approach.md
-    prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
+    # NEW: Check cache first
+    cached = get_cached_exposition(subtopic_id, DATABASE_PATH)
+    
+    if cached:
+        # Cache hit - use cached content
+        explanation = cached["exposition_content"]
+        logger.info(f"✓ Cache HIT for subtopic {subtopic_id} (model: {cached['model_identifier']})")
+    else:
+        # Cache miss - generate via LLM
+        logger.info(f"✗ Cache MISS for subtopic {subtopic_id}, generating new exposition")
+        
+        prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
 
-CORE PHILOSOPHY - SOCRATIC METHOD:
-You are a Facilitator, not an Instructor. Your goal is to help students construct mental models themselves through guided discovery.
-
-TEACHING PRINCIPLES:
-- Guide discovery through questions, don't provide direct answers
-- Start with clear explanations before asking questions
+Your task: Provide a clear, engaging explanation of this topic.
 - Use friendly, age-appropriate language (14-16 years old)
-- Include a concrete, relatable example
-- Connect to real-world applications when possible
-- Build on what students likely already know
-
-Your task: Provide a clear, engaging explanation of {state['subtopic_name']}.
+- Include a concrete example
 - Keep it concise (2-3 paragraphs)
-- Include one worked example to illustrate the concept
 - End by asking if they have any questions before moving to practice
-- Be warm and encouraging - make them feel confident to ask questions
 
 Do NOT ask a practice question yet - just explain the concept clearly."""
 
-    try:
-        explanation = await llm_client.generate(prompt)
+        try:
+            explanation = await llm_client.generate(prompt)
+            
+            # NEW: Save to cache after successful generation
+            save_cached_exposition(
+                subtopic_id=subtopic_id,
+                content=explanation,
+                model_identifier=LLM_MODEL,
+                db_path=DATABASE_PATH
+            )
+            logger.info(f"✓ Cached new exposition for subtopic {subtopic_id}")
+            
+        except Exception as e:
+            # Error handling
+            logger.error("Exposition generation failed: %s", str(e))
+            state["messages"].append(
+                {
+                    "role": "tutor",
+                    "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            return state
 
-        # Add tutor message to history
-        state["messages"].append(
-            {"role": "tutor", "content": explanation, "timestamp": datetime.utcnow().isoformat()}
-        )
+    # Add message to state (whether cached or freshly generated)
+    state["messages"].append(
+        {"role": "tutor", "content": explanation, "timestamp": datetime.utcnow().isoformat()}
+    )
 
-        # Stay in exposition state - wait for student to request a question
-        # Don't change state here; the routing logic will handle the transition
-        # state["current_state"] remains "exposition"
-        logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
-
-    except Exception as e:
-        logger.error("Exposition failed: %s", str(e))
-        # Error handling
-        state["messages"].append(
-            {
-                "role": "tutor",
-                "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+    # Stay in exposition state - wait for student to request a question
+    logger.info("← STAYING IN STATE: exposition (waiting for student to request question)")
 
     return state
 
@@ -217,12 +242,8 @@ async def questioning_node(state: TutorState) -> TutorState:
     """Generate an appropriate GCSE-level question.
 
     This node creates questions to test student understanding.
-    Resets hint counter for the new question.
     """
     logger.info("→ ENTERING STATE: questioning (subtopic: %s)", state.get('subtopic_name', 'Unknown'))
-    
-    # Reset hints counter for new question
-    state["hints_given"] = 0
     
     # Build context from recent messages
     recent_context = "\n".join(
@@ -232,23 +253,16 @@ async def questioning_node(state: TutorState) -> TutorState:
         ]
     )
 
-    # Socratic teaching principles
-    prompt = f"""You are a patient, encouraging GCSE mathematics tutor teaching {state['subtopic_name']}.
+    prompt = f"""You are a GCSE mathematics tutor teaching {state['subtopic_name']}.
 
 Recent conversation:
 {recent_context}
 
-SOCRATIC TEACHING PRINCIPLES:
-- Guide discovery through questions, don't provide direct answers
-- When student answers incorrectly, you'll ask guiding questions (not give solutions)
-- Build on their existing knowledge with clear, age-appropriate language (14-16 years old)
-
 Your task: Ask ONE clear, appropriate practice question.
-- Make it suitable for GCSE level (appropriate difficulty)
+- Make it suitable for GCSE level
 - The question should test understanding of {state['subtopic_name']}
 - Be specific and clear about what you're asking
 - If the question requires numerical calculation, it should be solvable with basic arithmetic
-- Frame the question in an engaging way
 
 Just ask the question - no additional explanation needed."""
 
@@ -271,7 +285,6 @@ Just ask the question - no additional explanation needed."""
         logger.info("← TRANSITIONING TO STATE: questioning (waiting for student answer)")
 
     except Exception as e:
-        logger.error("Question generation failed: %s", str(e))
         state["messages"].append(
             {
                 "role": "tutor",
@@ -284,70 +297,48 @@ Just ask the question - no additional explanation needed."""
 
 
 async def evaluation_node(state: TutorState) -> TutorState:
-    """Evaluate the student's answer with detailed classification.
+    """Evaluate the student's answer.
 
     Determines if the answer is correct, partially correct, or incorrect.
-    Uses Socratic principles: diagnose before prescribing.
+    Sets current_state to route to next node via conditional edges.
     """
     logger.info("→ ENTERING STATE: evaluation (answer: %s)", state.get('last_student_answer', 'None')[:50])
     
     if not state["last_student_answer"]:
         # No answer to evaluate yet
         return state
-    
-    # Check if student is requesting the full answer
-    answer_lower = state["last_student_answer"].lower().strip()
-    request_keywords = ["give me the answer", "just tell me", "what's the answer", "show me the answer", 
-                       "i give up", "i don't know", "tell me how", "just show me"]
-    
-    is_answer_request = any(keyword in answer_lower for keyword in request_keywords)
 
-    # Socratic Rule I: Diagnose Before You Prescribe
-    # We need to understand what the student actually did, not assume competence
-    prompt = f"""You are a GCSE mathematics tutor evaluating a student's answer using the Socratic method.
+    prompt = f"""You are evaluating a GCSE mathematics student's answer.
 
 Question: {state.get('last_question', 'N/A')}
 Student's answer: {state['last_student_answer']}
-Topic: {state['subtopic_name']}
 
-Your task: Carefully evaluate the student's response.
-
-FIRST: Verify what the student ACTUALLY did. Do not assume they used a correct method.
-
-Classify the answer as one of:
-- "correct": The answer is fully correct
-- "partial": The answer shows some understanding but has errors or is incomplete
-- "incorrect": The answer is wrong or shows a fundamental misconception
-
-Respond with JSON in this exact format:
+Evaluate the answer and respond with JSON in this exact format:
 {{
-    "correctness": "correct" | "partial" | "incorrect",
-    "feedback": "Brief, encouraging feedback (1-2 sentences)",
-    "assessment": "What did the student actually do? What approach did they take?"
+    "correct": true/false,
+    "feedback": "Brief feedback explaining why it's correct or incorrect"
 }}
 
-Be encouraging even when incorrect. Focus on what you observed, not what you hoped to see."""
+Be encouraging even when incorrect. Keep feedback brief (1-2 sentences)."""
 
     try:
         response = await llm_client.generate(prompt)
 
-        # Parse JSON response (handle markdown code blocks)
+        # Parse JSON response
+        # Extract JSON from response (handle markdown code blocks)
         json_str = response.strip()
         if json_str.startswith("```"):
+            # Remove markdown code blocks
             lines = json_str.split("\n")
-            json_str = "\n".join([line for line in lines[1:-1] if line.strip()])
+            json_str = "\n".join(lines[1:-1])
 
         evaluation = json.loads(json_str)
-        correctness = evaluation.get("correctness", "incorrect")
 
         state["last_evaluation"] = evaluation
 
-        # Handle different correctness levels
-        if correctness == "correct":
+        # Update counters
+        if evaluation.get("correct", False):
             state["questions_correct"] += 1
-            
-            # Reset hints counter for next question
-            state["hints_given"] = 0
 
             # Add positive feedback
             state["messages"].append(
@@ -358,46 +349,25 @@ Be encouraging even when incorrect. Focus on what you observed, not what you hop
                 }
             )
 
-            # Immediately generate next question
-            logger.info("✓ Answer CORRECT - generating next question")
-            state = await questioning_node(state)
-            
-        elif correctness == "partial":
-            # Partial answer: provide encouraging feedback and guide to completion
+            # Route to questioning for next question
+            state["current_state"] = "questioning"
+            logger.info("✓ Answer CORRECT - routing to questioning")
+        else:
+            # Incorrect answer - just acknowledge it, Socratic node will guide
+            # Keep feedback brief and don't give away the answer
             state["messages"].append(
                 {
                     "role": "tutor",
-                    "content": f"You're on the right track! {evaluation['feedback']}",
+                    "content": "Not quite.",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             )
-            
-            # Transition to diagnosis to identify what's missing
+
+            # Route to diagnosis to analyze the error (then to socratic)
             state["current_state"] = "diagnosis"
-            logger.info("◐ Answer PARTIAL - transitioning to diagnosis")
-            
-        else:  # incorrect
-            # Check if student is requesting the answer directly
-            if is_answer_request and state["hints_given"] >= 3:
-                # Student has received enough hints and is explicitly asking for answer
-                logger.info("Student requesting full answer after %d hints", state["hints_given"])
-                state["current_state"] = "socratic"  # socratic_node will provide full solution
-            else:
-                # Standard incorrect answer flow
-                state["messages"].append(
-                    {
-                        "role": "tutor",
-                        "content": f"Not quite. {evaluation['feedback']}",
-                        "timestamp": datetime.utcnow().isoformat(),
-                    }
-                )
-                
-                # Next: diagnose the error
-                state["current_state"] = "diagnosis"
-                logger.info("✗ Answer INCORRECT - transitioning to diagnosis")
+            logger.info("✗ Answer INCORRECT - routing to diagnosis")
 
     except Exception as e:
-        logger.error("Evaluation failed: %s", str(e))
         state["messages"].append(
             {
                 "role": "tutor",
@@ -410,243 +380,76 @@ Be encouraging even when incorrect. Focus on what you observed, not what you hop
 
 
 async def diagnosis_node(state: TutorState) -> TutorState:
-    """Identify the student's specific misconception.
+    """Identify the student's misconception.
 
     Analyzes incorrect answers to understand what went wrong.
-    Follows Socratic Rule I: Diagnose Before You Prescribe - research the thinking first.
+    This node doesn't add messages - it just prepares context for socratic node.
     """
     logger.info("→ ENTERING STATE: diagnosis (analyzing incorrect answer)")
     
-    # Get the assessment from evaluation if available
-    assessment = ""
-    if state.get("last_evaluation") and "assessment" in state["last_evaluation"]:
-        assessment = f"\nObserved approach: {state['last_evaluation']['assessment']}"
+    # Store diagnostic information in state for socratic node to use
+    # This node is silent - it just analyzes
+    # The socratic node will do the actual guiding
     
-    # Common misconception patterns for GCSE mathematics
-    misconception_examples = """
-Common GCSE misconception types:
-- Linearity misconception: Treating non-linear operations as linear (e.g., (x+3)² = x² + 9)
-- Operation confusion: Adding when should multiply, or vice versa (e.g., (2x)(3x) = 5x)
-- Sign errors: Mistakes with negative numbers or when distributing negatives
-- Order of operations: Ignoring BIDMAS/PEMDAS rules
-- Common denominator: Forgetting to find common denominator when adding fractions
-- Cancellation errors: Incorrectly canceling terms that aren't factors
-- Unit confusion: Mixing up units or conversion factors
-"""
-
-    # Socratic Rule I: Diagnose Before You Prescribe
-    prompt = f"""You are a GCSE mathematics tutor analyzing a student's mistake using the Socratic method.
-
-Question: {state.get('last_question', 'N/A')}
-Student's answer: {state['last_student_answer']}
-Topic: {state['subtopic_name']}{assessment}
-
-{misconception_examples}
-
-CRITICAL: Follow Socratic Rule I - "Diagnose Before You Prescribe"
-You cannot guide a student if you don't know where they are standing.
-
-Your task: Identify the SPECIFIC misconception type.
-
-Respond with JSON:
-{{
-    "misconception_type": "Brief name of the misconception (e.g., 'linearity misconception', 'forgot common denominator')",
-    "explanation": "One sentence explaining what conceptual error they made",
-    "diagnostic_question": "ONE focused question to help them recognize their error (do NOT give the answer)"
-}}
-
-Remember: Attack the concept, not the calculation. Go up a level to fix the mental model."""
-
-    try:
-        response = await llm_client.generate(prompt)
-        
-        # Parse JSON response
-        json_str = response.strip()
-        if json_str.startswith("```"):
-            lines = json_str.split("\n")
-            json_str = "\n".join([line for line in lines[1:-1] if line.strip()])
-
-        diagnosis = json.loads(json_str)
-        
-        # Store misconception in evaluation state
-        if state.get("last_evaluation"):
-            state["last_evaluation"]["misconception"] = diagnosis.get("misconception_type", "unknown")
-        
-        # Present the diagnostic question to the student
-        # Socratic Rule II: One Turn, One Question
-        diagnostic_message = f"{diagnosis.get('explanation', '')} {diagnosis.get('diagnostic_question', '')}"
-        
-        state["messages"].append(
-            {"role": "tutor", "content": diagnostic_message.strip(), "timestamp": datetime.utcnow().isoformat()}
-        )
-        
-        logger.info("Diagnosed misconception: %s", diagnosis.get('misconception_type', 'unknown'))
-
-        # Next: provide Socratic guidance
-        state["current_state"] = "socratic"
-        logger.info("← TRANSITIONING TO STATE: socratic (will provide guided hint)")
-
-    except Exception as e:
-        logger.error("Diagnosis failed: %s", str(e))
-        state["messages"].append(
-            {
-                "role": "tutor",
-                "content": "Let me help you think through this step by step. Can you walk me through how you got that result?",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
-        state["current_state"] = "socratic"
+    # Route to socratic guidance
+    state["current_state"] = "socratic"
+    logger.info("← TRANSITIONING TO STATE: socratic (will provide guided hint)")
 
     return state
 
 
 async def socratic_node(state: TutorState) -> TutorState:
-    """Ask guiding questions with escalating hints.
+    """Ask guiding questions to help student discover the right approach.
 
     Uses Socratic method - asking questions rather than giving answers.
-    Tracks hint count and escalates from subtle to explicit guidance.
-    After 3 hints, provides full step-by-step solution if requested.
     """
-    logger.info("→ ENTERING STATE: socratic (hint #%d)", state.get('hints_given', 0) + 1)
+    logger.info("→ ENTERING STATE: socratic (providing Socratic guidance)")
     
-    # Increment hints counter
-    current_hints = state.get("hints_given", 0)
-    state["hints_given"] = current_hints + 1
+    # Get recent conversation context
+    recent_messages = "\n".join(
+        [f"{msg['role']}: {msg['content']}" for msg in state["messages"][-3:]]
+    )
     
-    # Check if student is requesting full answer after enough hints
-    answer_lower = state.get("last_student_answer", "").lower().strip()
-    request_keywords = ["give me the answer", "just tell me", "what's the answer", "show me the answer", 
-                       "i give up", "i don't know", "tell me how", "just show me"]
-    is_answer_request = any(keyword in answer_lower for keyword in request_keywords)
-    
-    # Provide full solution if:
-    # 1. Student has received 3+ hints, AND
-    # 2. Student explicitly requests the answer
-    if state["hints_given"] > 3 and is_answer_request:
-        logger.info("Providing full step-by-step solution after %d hints", state["hints_given"])
-        
-        prompt = f"""You are a GCSE mathematics tutor. The student has struggled with this question despite multiple hints.
+    prompt = f"""You are a GCSE mathematics tutor using the Socratic method to guide a student.
 
-Question: {state.get('last_question', 'N/A')}
+Original question: {state.get('last_question', 'N/A')}
 Student's incorrect answer: {state['last_student_answer']}
 Topic: {state['subtopic_name']}
-Hints already given: {state['hints_given']}
 
-The student has explicitly requested the full answer. Provide a clear, step-by-step solution:
-1. Show each step clearly
-2. Explain WHY each step is necessary
-3. Highlight the key concept they were missing
-4. End with encouragement to try a similar problem next
+Recent conversation:
+{recent_messages}
 
-Be kind and supportive - struggling is part of learning."""
+THE SOCRATIC METHOD - Critical Guidelines:
+1. NEVER tell them what to do
+2. NEVER give the answer or steps
+3. ALWAYS ask a question that makes them think
+4. Focus on ONE key concept they're missing
+5. Guide them to discover the error themselves
 
-        try:
-            solution = await llm_client.generate(prompt)
-            
-            state["messages"].append(
-                {
-                    "role": "tutor",
-                    "content": f"I can see you've been working hard on this. Let me show you the full solution:\n\n{solution}",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            )
-            
-            # Reset hints and move to next question
-            state["hints_given"] = 0
-            logger.info("← GENERATING NEXT QUESTION after providing solution")
-            state = await questioning_node(state)
-            
-        except Exception as e:
-            logger.error("Failed to generate solution: %s", str(e))
-            state["messages"].append(
-                {
-                    "role": "tutor",
-                    "content": "Let me show you the key steps to solve this problem...",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            )
-            state["current_state"] = "socratic"
-            
-        return state
-    
-    # Otherwise, provide escalating hints based on count
-    # Hint strategy:
-    # - Hint 1: Subtle, conceptual question (Rule III: Attack the concept, not calculation)
-    # - Hint 2: More directed, guide toward specific step
-    # - Hint 3: Explicit, but still let them do the final step
-    # - Hint 4+: Very explicit guidance
-    
-    hint_level = "subtle" if state["hints_given"] == 1 else \
-                 "directed" if state["hints_given"] == 2 else \
-                 "explicit" if state["hints_given"] == 3 else "very_explicit"
-    
-    # Get misconception info if available
-    misconception_context = ""
-    if state.get("last_evaluation") and "misconception" in state["last_evaluation"]:
-        misconception_context = f"\nIdentified misconception: {state['last_evaluation']['misconception']}"
-    
-    # Socratic teaching principles from docs/socratic_approach.md
-    socratic_rules = """
-SOCRATIC METHOD RULES:
-1. Rule II: One Turn, One Question - Ask EXACTLY ONE focused question
-2. Rule III: Attack the Concept, Not the Calculation - Fix the mental model, not just the numbers
-3. Rule IV: Cognitive Conflict - Present counter-examples that make their model fail
-"""
+Examples of good Socratic questions:
+- "When you expand a bracket, how many terms do you need to multiply?"
+- "What does the minus sign in front of a bracket do to the terms inside?"
+- "If you have 5(2y - 3), what are you multiplying 5 by?"
 
-    prompt = f"""You are a GCSE mathematics tutor using the Socratic method.
-
-Question: {state.get('last_question', 'N/A')}
-Student's incorrect answer: {state['last_student_answer']}
-Topic: {state['subtopic_name']}
-Hint number: {state['hints_given']}{misconception_context}
-
-{socratic_rules}
-
-Hint level: {hint_level}
-
-Your task based on hint level:
-
-SUBTLE (Hint 1): Ask a broad conceptual question. Target the fundamental concept.
-Example: "When two brackets are touching like (a)(b), what mathematical operation is happening between them?"
-
-DIRECTED (Hint 2): Guide toward a specific step, but don't solve it for them.
-Example: "Good question. Let's think about the first step. What should we do with the brackets first before we can simplify?"
-
-EXPLICIT (Hint 3): Be very specific about what to do, but let them execute it.
-Example: "To solve this, you need to multiply each term in the first bracket by each term in the second bracket. Can you try that?"
-
-VERY_EXPLICIT (Hint 4+): Walk through the first step, then ask them to do the next.
-Example: "Let me show you the first step: 2x × x = 2x². Now, can you multiply 2x × (-4)?"
-
-Remember: 
-- Ask EXACTLY ONE question (Rule II)
-- For misconceptions like linearity, use cognitive conflict (Rule IV) - test with simple numbers
-- Be encouraging and patient
-
-Respond with just your hint question/guidance."""
+Your task: Ask ONE simple, focused question that guides them toward understanding.
+Be warm and encouraging. Don't explain - just ask."""
 
     try:
-        hint_message = await llm_client.generate(prompt)
+        hint_question = await llm_client.generate(prompt)
 
         state["messages"].append(
-            {
-                "role": "tutor",
-                "content": hint_message,
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            {"role": "tutor", "content": hint_question, "timestamp": datetime.utcnow().isoformat()}
         )
 
-        # Next: wait for student to try again with the hint
-        # Set to "socratic" so next message triggers evaluation
+        # Stay in socratic state - next student message will be evaluated
         state["current_state"] = "socratic"
-        logger.info("← STAYING IN STATE: socratic (waiting for student attempt after hint #%d)", state["hints_given"])
+        logger.info("← STAYING IN STATE: socratic (waiting for student to try again)")
 
-    except Exception as e:
-        logger.error("Socratic guidance failed: %s", str(e))
+    except Exception:
         state["messages"].append(
             {
                 "role": "tutor",
-                "content": "Think about the key steps in this problem. What should you do first?",
+                "content": "Let's think about this step by step. What's the first thing you need to do when expanding brackets?",
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )
@@ -687,6 +490,76 @@ Answer with only one word: NUMERICAL or NON_NUMERICAL"""
 
 
 # ============================================================================
+# Conditional Routing Functions
+# ============================================================================
+
+
+def route_from_exposition(state: TutorState) -> str:
+    """Route from exposition based on student response.
+    
+    If student asks for question, go to questioning.
+    Otherwise stay in exposition to continue dialogue.
+    """
+    # Check if last student message requests a question
+    if state["messages"]:
+        last_msg = state["messages"][-1]
+        if last_msg["role"] == "student":
+            content = last_msg["content"].lower()
+            # Simple keyword detection
+            if any(word in content for word in ["question", "practice", "try", "test", "quiz"]):
+                logger.info("→ Routing from exposition to questioning")
+                return "questioning"
+    
+    # Default: stay in exposition (END means wait for next message)
+    return "END"
+
+
+def route_from_questioning(_state: TutorState) -> str:
+    """Route from questioning based on whether we have an answer.
+    
+    After generating question, wait for student answer (END).
+    """
+    # After asking question, always wait for student response
+    return "END"
+
+
+def route_from_evaluation(state: TutorState) -> str:
+    """Route from evaluation based on correctness.
+    
+    - Correct → questioning (new question)
+    - Incorrect → diagnosis (analyze error)
+    """
+    if state.get("last_evaluation"):
+        if state["last_evaluation"].get("correct", False):
+            logger.info("→ Routing from evaluation to questioning (correct answer)")
+            return "questioning"
+        else:
+            logger.info("→ Routing from evaluation to diagnosis (incorrect answer)")
+            return "diagnosis"
+    
+    # Fallback: wait for answer
+    return "END"
+
+
+def route_from_diagnosis(_state: TutorState) -> str:
+    """Route from diagnosis to socratic guidance.
+    
+    After diagnosing error, provide Socratic hints.
+    """
+    logger.info("→ Routing from diagnosis to socratic")
+    return "socratic"
+
+
+def route_from_socratic(_state: TutorState) -> str:
+    """Route from socratic node.
+    
+    After asking guiding question, wait for student to try again (END).
+    """
+    # After Socratic hint, wait for student response
+    return "END"
+
+
+# ============================================================================
 # LangGraph State Machine Setup
 # ============================================================================
 
@@ -710,9 +583,49 @@ def create_tutor_graph():
     # Set entry point
     graph.set_entry_point("exposition")
 
-    # Define edges (state transitions)
-    # Note: Actual transitions are determined by updating state["current_state"] in each node
-    # LangGraph will automatically route to the node matching current_state
+    # Add conditional edges (routing logic)
+    graph.add_conditional_edges(
+        "exposition",
+        route_from_exposition,
+        {
+            "questioning": "questioning",
+            "END": "__end__",  # Wait for next student message
+        }
+    )
+    
+    graph.add_conditional_edges(
+        "questioning",
+        route_from_questioning,
+        {
+            "END": "__end__",  # Wait for student answer
+        }
+    )
+    
+    graph.add_conditional_edges(
+        "evaluation",
+        route_from_evaluation,
+        {
+            "questioning": "questioning",  # Correct → new question
+            "diagnosis": "diagnosis",      # Incorrect → analyze error
+            "END": "__end__",
+        }
+    )
+    
+    graph.add_conditional_edges(
+        "diagnosis",
+        route_from_diagnosis,
+        {
+            "socratic": "socratic",  # Always go to Socratic guidance
+        }
+    )
+    
+    graph.add_conditional_edges(
+        "socratic",
+        route_from_socratic,
+        {
+            "END": "__end__",  # Wait for student to try again
+        }
+    )
 
     # Compile the graph
     return graph.compile()

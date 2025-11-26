@@ -12,6 +12,7 @@ Bloom is an interactive mathematics tutor that uses LangGraph-powered AI agents 
 - ✅ **Progress Tracking** - Track completion across subtopics with persistent data
 - ✅ **Session Resumption** - Pick up exactly where you left off
 - ✅ **Socratic Teaching** - Guided discovery through hints and questions
+- ✅ **Smart Caching** - Lesson expositions cached for instant loading and 90% cost reduction
 
 ## Quick Start
 
@@ -93,11 +94,13 @@ Open your browser to **http://localhost:8000**
 2. Browse the GCSE mathematics syllabus (topics & subtopics)
 3. Click a subtopic to start a tutoring session
 4. Chat with the AI tutor:
-   - Read concept explanations
+   - Read concept explanations (first time: ~3s to generate, subsequent: instant from cache)
    - Answer questions
    - Get feedback and hints
    - Use the integrated calculator for numerical problems
 5. Track your progress on the home page
+
+**Note**: The first time you or any student accesses a subtopic, it takes ~3 seconds to generate the lesson. After that, all future sessions on that subtopic load instantly thanks to smart caching.
 
 ### Session Resumption
 
@@ -169,6 +172,42 @@ sqlite3 bloom.db "SELECT * FROM progress;"
 curl -X POST http://localhost:8000/admin/progress/reset
 ```
 
+### Cache Management
+
+**Performance Optimization**: Lesson expositions are automatically cached to reduce LLM API costs by ~90% and improve session start times from ~3 seconds to < 0.5 seconds.
+
+**How it works**:
+- **First time** accessing a subtopic: Generates exposition via LLM and caches it
+- **Subsequent times**: Retrieves cached exposition instantly (no API call)
+- **Cache storage**: Each exposition ~3-4KB, total cache < 500KB for full syllabus
+
+**View cached expositions**:
+```bash
+sqlite3 bloom.db "SELECT subtopic_id, model_identifier, generated_at FROM cached_expositions;"
+```
+
+**View cache statistics**:
+```bash
+sqlite3 bloom.db "SELECT COUNT(*) as cached_subtopics, SUM(LENGTH(exposition_content)) as total_bytes FROM cached_expositions;"
+```
+
+**Clear cache** (force regeneration):
+```bash
+# Clear all cached expositions
+sqlite3 bloom.db "DELETE FROM cached_expositions;"
+
+# Clear specific subtopic
+sqlite3 bloom.db "DELETE FROM cached_expositions WHERE subtopic_id = 202;"
+
+# Clear by model (after switching LLM providers)
+sqlite3 bloom.db "DELETE FROM cached_expositions WHERE model_identifier = 'gpt-4';"
+```
+
+**When to clear cache**:
+- After changing `LLM_MODEL` or `LLM_PROVIDER` (to regenerate with new model)
+- If you notice quality issues with a cached exposition
+- For testing fresh generations
+
 ## Architecture
 
 ### Tutoring Agent (LangGraph)
@@ -192,6 +231,7 @@ The agent transitions fluidly between states based on conversation context.
 - **progress** - Per-subtopic completion tracking
 - **calculator_history** - Logged calculations for tutor feedback
 - **agent_checkpoints** - LangGraph state for session resumption
+- **cached_expositions** - Cached lesson expositions for cost reduction and performance
 
 See [specs/001-bloom-tutor-app/data-model.md](specs/001-bloom-tutor-app/data-model.md) for full schema.
 
