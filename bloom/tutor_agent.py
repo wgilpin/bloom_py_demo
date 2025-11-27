@@ -7,26 +7,78 @@ through different states: exposition, questioning, evaluation, diagnosis, and so
 import json
 import asyncio
 import logging
+import os
 from typing import Literal, TypedDict, Optional
 from datetime import datetime
 
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 
-from bloom.main import (
-    LLM_PROVIDER,
-    LLM_MODEL,
-    OPENAI_API_KEY,
-    ANTHROPIC_API_KEY,
-    GOOGLE_API_KEY,
-    XAI_API_KEY,
-    DATABASE_PATH,
+from bloom.database import (
+    get_cached_exposition, 
+    save_cached_exposition,
+    get_cached_image,
+    save_cached_image,
+    validate_image_data,
 )
-from bloom.database import get_cached_exposition, save_cached_exposition
+
+# Load environment variables
+load_dotenv()
+
+# LLM Configuration (load directly to avoid circular import with main.py)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+DATABASE_PATH = os.getenv("DATABASE_PATH", "bloom.db")
+
+# Image Generation Configuration (spec 003)
+ENABLE_IMAGE_GENERATION = os.getenv("ENABLE_IMAGE_GENERATION", "true").lower() == "true"
+IMAGE_GENERATION_MODEL = os.getenv("IMAGE_GENERATION_MODEL", "gemini-3-pro-image")
+IMAGE_GENERATION_RESOLUTION = os.getenv("IMAGE_GENERATION_RESOLUTION", "2K")
 
 # Configure logger for state machine
 logger = logging.getLogger("bloom.tutor_agent")
+
+# Image cache statistics (spec 003 - Phase 4)
+_image_cache_stats = {
+    "hits": 0,
+    "misses": 0,
+    "hit_rate": 0.0
+}
+
+
+def get_image_cache_stats() -> dict:
+    """Get current image cache statistics.
+    
+    Returns:
+        Dict with hits, misses, and hit_rate percentage
+    """
+    return _image_cache_stats.copy()
+
+
+def _update_cache_stats(is_hit: bool) -> None:
+    """Update cache statistics and calculate hit rate.
+    
+    Args:
+        is_hit: True if cache hit, False if cache miss
+    """
+    global _image_cache_stats
+    if is_hit:
+        _image_cache_stats["hits"] += 1
+    else:
+        _image_cache_stats["misses"] += 1
+    
+    total = _image_cache_stats["hits"] + _image_cache_stats["misses"]
+    if total > 0:
+        _image_cache_stats["hit_rate"] = (_image_cache_stats["hits"] / total) * 100
+        logger.info(f"📊 Image cache stats: {_image_cache_stats['hits']} hits, "
+                   f"{_image_cache_stats['misses']} misses, "
+                   f"{_image_cache_stats['hit_rate']:.1f}% hit rate")
 
 
 # ============================================================================
@@ -177,23 +229,30 @@ async def exposition_node(state: TutorState) -> TutorState:
 
     This is typically the first state in a tutoring session.
     Checks cache before generating to reduce LLM API costs.
+    
+    If there are existing messages, this handles follow-up questions about the concept.
     """
     logger.info("→ ENTERING STATE: exposition (subtopic: %s)", state.get('subtopic_name', 'Unknown'))
     
     subtopic_id = state["subtopic_id"]
     
-    # NEW: Check cache first
-    cached = get_cached_exposition(subtopic_id, DATABASE_PATH)
+    # Check if this is initial exposition or a follow-up question
+    # Initial exposition: no messages yet or only tutor messages
+    is_initial = not any(msg["role"] == "student" for msg in state["messages"])
     
-    if cached:
-        # Cache hit - use cached content
-        explanation = cached["exposition_content"]
-        logger.info(f"✓ Cache HIT for subtopic {subtopic_id} (model: {cached['model_identifier']})")
-    else:
-        # Cache miss - generate via LLM
-        logger.info(f"✗ Cache MISS for subtopic {subtopic_id}, generating new exposition")
+    if is_initial:
+        # Initial exposition - check cache first
+        cached = get_cached_exposition(subtopic_id, DATABASE_PATH)
         
-        prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
+        if cached:
+            # Cache hit - use cached content
+            explanation = cached["exposition_content"]
+            logger.info(f"✓ Cache HIT for subtopic {subtopic_id} (model: {cached['model_identifier']})")
+        else:
+            # Cache miss - generate via LLM
+            logger.info(f"✗ Cache MISS for subtopic {subtopic_id}, generating new exposition")
+            
+            prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
 
 Your task: Provide a clear, engaging explanation of this topic.
 - Use friendly, age-appropriate language (14-16 years old)
@@ -203,21 +262,141 @@ Your task: Provide a clear, engaging explanation of this topic.
 
 Do NOT ask a practice question yet - just explain the concept clearly."""
 
+            try:
+                explanation = await llm_client.generate(prompt)
+                
+                # NEW: Save to cache after successful generation
+                save_cached_exposition(
+                    subtopic_id=subtopic_id,
+                    content=explanation,
+                    model_identifier=LLM_MODEL,
+                    db_path=DATABASE_PATH
+                )
+                logger.info(f"✓ Cached new exposition for subtopic {subtopic_id}")
+                
+            except Exception as e:
+                # Error handling
+                logger.error("Exposition generation failed: %s", str(e))
+                state["messages"].append(
+                    {
+                        "role": "tutor",
+                        "content": f"I'm having trouble connecting right now. Please try again in a moment. (Error: {str(e)})",
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
+                return state
+        
+        # Image Generation Integration (spec 003 - US2/US3)
+        # Retrieve cached image or generate new one
+        # This happens asynchronously so text displays first
+        try:
+            # Check if image already exists in cache (US2: Cache Retrieval)
+            cached_image = get_cached_image(subtopic_id, DATABASE_PATH)
+            
+            if cached_image:
+                # Cache hit - image available instantly (<1s)
+                logger.info(
+                    f"✓ Image cache HIT | "
+                    f"subtopic_id={subtopic_id} | "
+                    f"size={cached_image['file_size']} bytes | "
+                    f"format={cached_image.get('image_format', 'PNG')} | "
+                    f"model={cached_image.get('model_identifier', 'unknown')} | "
+                    f"generated_at={cached_image.get('generated_at', 'unknown')}"
+                )
+                _update_cache_stats(is_hit=True)
+                # Image metadata available for frontend via /api/image/{subtopic_id}
+            else:
+                # Cache miss - generate image (US3: First-Time Generation)
+                logger.info(
+                    f"✗ Image cache MISS | "
+                    f"subtopic_id={subtopic_id} | "
+                    f"action=generating_new_image"
+                )
+                _update_cache_stats(is_hit=False)
+                
+                # Generate image asynchronously (non-blocking for text display)
+                image_data = await generate_whiteboard_image(
+                    exposition_text=explanation,
+                    model=IMAGE_GENERATION_MODEL,
+                    resolution=IMAGE_GENERATION_RESOLUTION
+                )
+                
+                if image_data:
+                    # Validate image before caching
+                    if validate_image_data(image_data):
+                        # Save validated image to cache
+                        save_cached_image(
+                            subtopic_id=subtopic_id,
+                            image_data=image_data,
+                            model_identifier=IMAGE_GENERATION_MODEL,
+                            prompt_version="v1",
+                            db_path=DATABASE_PATH
+                        )
+                        logger.info(
+                            f"✓ Image CACHED | "
+                            f"subtopic_id={subtopic_id} | "
+                            f"size={len(image_data)} bytes | "
+                            f"model={IMAGE_GENERATION_MODEL} | "
+                            f"format=PNG | "
+                            f"prompt_version=v1"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Image VALIDATION_FAILED | "
+                            f"subtopic_id={subtopic_id} | "
+                            f"size={len(image_data)} bytes | "
+                            f"action=not_caching"
+                        )
+                else:
+                    logger.warning(
+                        f"⚠️ Image GENERATION_FAILED | "
+                        f"subtopic_id={subtopic_id} | "
+                        f"result=None | "
+                        f"action=continuing_text_only"
+                    )
+                    
+        except Exception as e:
+            # Graceful degradation: log error but don't fail the session
+            logger.error(
+                f"❌ Image ERROR | "
+                f"subtopic_id={subtopic_id} | "
+                f"error_type={type(e).__name__} | "
+                f"error={str(e)} | "
+                f"action=text_only_fallback",
+                exc_info=True
+            )
+            # Session continues with text-only mode
+    else:
+        # Follow-up question - student asked something about the concept
+        logger.info("Student asked follow-up question in exposition")
+        
+        # Build conversation context
+        recent_context = "\n".join(
+            [f"{msg['role']}: {msg['content']}" for msg in state["messages"][-5:]]
+        )
+        
+        prompt = f"""You are a patient, encouraging GCSE mathematics tutor helping a student learn {state['subtopic_name']}.
+
+The student has asked a follow-up question about the concept you're explaining.
+
+Recent conversation:
+{recent_context}
+
+Your task: Answer their question clearly and helpfully.
+- Be patient and encouraging
+- Provide additional explanation or examples if needed
+- Keep it focused on the concept of {state['subtopic_name']}
+- After answering, ask if they'd like to try a practice question or have more questions
+
+Do NOT ask a practice question yet unless they explicitly request one."""
+
         try:
             explanation = await llm_client.generate(prompt)
-            
-            # NEW: Save to cache after successful generation
-            save_cached_exposition(
-                subtopic_id=subtopic_id,
-                content=explanation,
-                model_identifier=LLM_MODEL,
-                db_path=DATABASE_PATH
-            )
-            logger.info(f"✓ Cached new exposition for subtopic {subtopic_id}")
+            logger.info("Generated response to follow-up question")
             
         except Exception as e:
             # Error handling
-            logger.error("Exposition generation failed: %s", str(e))
+            logger.error("Follow-up response generation failed: %s", str(e))
             state["messages"].append(
                 {
                     "role": "tutor",
@@ -456,6 +635,128 @@ Be warm and encouraging. Don't explain - just ask."""
         state["current_state"] = "socratic"
 
     return state
+
+
+# ============================================================================
+# Image Generation Functions (spec 003)
+# ============================================================================
+
+
+async def generate_whiteboard_image(
+    exposition_text: str,
+    model: str = IMAGE_GENERATION_MODEL,
+    resolution: str = IMAGE_GENERATION_RESOLUTION
+) -> Optional[bytes]:
+    """Generate whiteboard-style image from exposition text.
+    
+    Uses Google Gemini image generation to create a professor's whiteboard
+    visualization with diagrams, arrows, boxes, and colorful captions.
+    
+    Args:
+        exposition_text: The full text exposition content to visualize
+        model: Gemini image model to use (default: from env)
+        resolution: Image resolution (1K, 2K, or 4K) - defaults to 2K
+        
+    Returns:
+        PNG image bytes at specified resolution, or None if generation fails
+        
+    Note:
+        - 2K resolution (2048x2048) provides excellent quality
+        - Generation typically takes 5-10 seconds
+        - Failures are logged but don't raise exceptions
+    """
+    # Check if image generation is enabled
+    if not ENABLE_IMAGE_GENERATION:
+        logger.info(
+            f"Image generation DISABLED | "
+            f"flag=ENABLE_IMAGE_GENERATION | "
+            f"action=skipping"
+        )
+        return None
+    
+    # Whiteboard prompt template
+    prompt = f"""now take the text from your reply and transform it into a professor's whiteboard image: diagrams, arrows, boxes, and captions explaining the core idea visually. Use colors as well.
+
+Text to visualize:
+{exposition_text}"""
+    
+    try:
+        # Initialize Google Gemini Client for image generation
+        from google import genai
+        from google.genai import types
+        
+        logger.info(
+            f"🎨 Image GENERATION_START | "
+            f"model={model} | "
+            f"resolution={resolution} | "
+            f"text_length={len(exposition_text)} chars"
+        )
+        start_time = asyncio.get_event_loop().time()
+        
+        # Create client with API key
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        
+        # Configure for specified resolution (2K = 2048x2048)
+        config = types.GenerateContentConfig(
+            response_modalities=["IMAGE"],
+            # Note: Resolution is determined by model capabilities
+            # 2K images will be generated at 2048x2048 (1:1 aspect ratio)
+        )
+        
+        # Call Gemini API to generate image
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=model,
+            contents=prompt,
+            config=config
+        )
+        
+        # Extract PNG image bytes from response
+        image_data = None
+        for part in response.parts:
+            if part.inline_data is not None:
+                image_data = part.inline_data.data
+                break
+        
+        if image_data is None:
+            logger.error(
+                f"❌ Image GENERATION_FAILED | "
+                f"error=no_image_data_in_response | "
+                f"model={model}"
+            )
+            return None
+        
+        # Log success with timing and file size (T094: duration, T093: detailed context)
+        duration = asyncio.get_event_loop().time() - start_time
+        logger.info(
+            f"✓ Image GENERATION_SUCCESS | "
+            f"duration={duration:.2f}s | "
+            f"size={len(image_data)} bytes | "
+            f"size_mb={len(image_data) / 1048576:.2f} MB | "
+            f"model={model} | "
+            f"resolution={resolution}"
+        )
+        
+        return image_data
+        
+    except ImportError as e:
+        logger.error(
+            f"❌ Image GENERATION_ERROR | "
+            f"error_type=ImportError | "
+            f"error=google-genai_not_available | "
+            f"details={str(e)}",
+            exc_info=False
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"❌ Image GENERATION_ERROR | "
+            f"error_type={type(e).__name__} | "
+            f"error={str(e)} | "
+            f"model={model}",
+            exc_info=True
+        )
+        return None
 
 
 # ============================================================================

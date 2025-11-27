@@ -407,10 +407,15 @@ async def get_chat_messages(request: Request, session_id: int):
     
     messages = get_messages_for_session(session_id, DATABASE_PATH)
     
+    # Get subtopic_id for image loading (spec 003)
+    session = get_session(session_id, DATABASE_PATH)
+    subtopic_id = session.get("subtopic_id") if session else None
+    
     html_parts = []
     for msg in messages:
         html_parts.append(templates.get_template("components/message.html").render(
             message=msg,
+            subtopic_id=subtopic_id,
             request=request,
         ))
     
@@ -495,6 +500,7 @@ async def post_chat_message(
         
         # For exposition state, check if student is requesting a question
         # If so, skip re-running exposition and go straight to questioning
+        # If student is asking a follow-up question, run exposition to answer it
         if current_state == "exposition":
             route_func = route_map.get("exposition")
             if route_func:
@@ -506,11 +512,11 @@ async def post_chat_message(
                     state["current_state"] = "questioning"
                     current_state = "questioning"
                 elif next_node == "END":
-                    # Student still in dialogue, stay in exposition (already has messages)
-                    logger.info("Student still in dialogue, staying in exposition")
-                    # Don't execute anything, just return current state
-                    # Update session and save state at the end
-                    pass
+                    # Student asked a follow-up question, run exposition to answer it
+                    logger.info("Student asked follow-up question in exposition, generating response")
+                    state = await exposition_node(state)
+                    # Stay in exposition state
+                    current_state = "exposition"
         
         # For questioning state, student has submitted an answer - move to evaluation
         elif current_state == "questioning":
@@ -606,10 +612,15 @@ async def post_chat_message(
         save_agent_checkpoint(session_id, state, DATABASE_PATH)
         
         # Return ALL new messages (student + tutor) as HTML
+        # Get subtopic_id for image loading (spec 003)
+        session = get_session(session_id, DATABASE_PATH)
+        subtopic_id = session.get("subtopic_id") if session else None
+        
         html_parts = []
         for msg in new_messages:
             html_parts.append(templates.get_template("components/message.html").render(
                 message=msg,
+                subtopic_id=subtopic_id,
                 request=request,
             ))
         
@@ -625,8 +636,76 @@ async def post_chat_message(
         
         return templates.get_template("components/message.html").render(
             message=error_msg,
+            subtopic_id=None,
             request=request,
         )
+
+
+# ============================================================================
+# Image Serving Endpoint (spec 003)
+# ============================================================================
+
+@router.get("/api/image/{subtopic_id}")
+async def serve_image(subtopic_id: int):
+    """Serve cached whiteboard image for a subtopic.
+    
+    Returns cached image (PNG or JPEG) with appropriate headers for browser caching.
+    Returns 404 if image not found (graceful degradation on frontend).
+    
+    Args:
+        subtopic_id: Subtopic ID to fetch image for
+        
+    Returns:
+        Response with image/png or image/jpeg content-type and binary data
+        
+    Raises:
+        HTTPException: 404 if image not found or corrupted
+    """
+    from fastapi.responses import Response
+    from bloom.database import get_cached_image
+    
+    try:
+        # Retrieve cached image
+        cached_image = get_cached_image(subtopic_id, DATABASE_PATH)
+        
+        if cached_image is None:
+            # No image found - return 404 for graceful degradation
+            logger.debug(f"Image not found for subtopic {subtopic_id}")
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Extract image data and format
+        image_data = cached_image["image_data"]
+        image_format = cached_image.get("image_format", "PNG")
+        
+        # Validate image data exists
+        if not image_data or len(image_data) == 0:
+            logger.warning(f"Corrupted image data for subtopic {subtopic_id}")
+            raise HTTPException(status_code=404, detail="Image data corrupted")
+        
+        # Determine correct media type
+        media_type = "image/jpeg" if image_format == "JPEG" else "image/png"
+        
+        # Return image with appropriate headers
+        return Response(
+            content=image_data,
+            media_type=media_type,
+            headers={
+                # Browser caching: cache for 1 week (images don't change often)
+                "Cache-Control": "public, max-age=604800, immutable",
+                # Additional metadata
+                "Content-Length": str(len(image_data)),
+                "X-Image-Format": image_format,
+                "X-Generated-At": cached_image.get("generated_at", ""),
+            }
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (404)
+        raise
+    except Exception as e:
+        # Log unexpected errors but return 404 for graceful degradation
+        logger.error(f"Error serving image for subtopic {subtopic_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=404, detail="Image unavailable")
 
 
 # ============================================================================
@@ -679,10 +758,15 @@ async def retry_last_message(request: Request, session_id: int = Form(...)):
         save_agent_checkpoint(session_id, state, DATABASE_PATH)
         
         # Return new messages as HTML
+        # Get subtopic_id for image loading (spec 003)
+        session = get_session(session_id, DATABASE_PATH)
+        subtopic_id = session.get("subtopic_id") if session else None
+        
         html_parts = []
         for msg in new_messages:
             html_parts.append(templates.get_template("components/message.html").render(
                 message=msg,
+                subtopic_id=subtopic_id,
                 request=request,
             ))
         
@@ -697,6 +781,7 @@ async def retry_last_message(request: Request, session_id: int = Form(...)):
         
         return templates.get_template("components/message.html").render(
             message=error_msg,
+            subtopic_id=None,
             request=request,
         )
 

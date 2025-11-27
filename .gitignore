@@ -39,6 +39,8 @@ env/
 bloom.db
 bloom.db-journal
 *.log
+test_images/
+*_test_image.png
 
 # Environment variables
 .env

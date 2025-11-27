@@ -30,6 +30,132 @@ function startNewChat() {
         });
     }
 }
+
+// Whiteboard Image Progressive Loading (spec 003)
+// This loads images after text displays, with polling for first-time generation
+document.addEventListener('DOMContentLoaded', function() {
+    loadWhiteboardImages();
+});
+
+// Also trigger on htmx afterSwap (when messages update)
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'chat-messages') {
+        loadWhiteboardImages();
+    }
+});
+
+function loadWhiteboardImages() {
+    // Find all image containers with subtopic_id
+    const containers = document.querySelectorAll('.whiteboard-image-container[data-subtopic-id]');
+    
+    containers.forEach(container => {
+        // Skip if already loaded
+        if (container.querySelector('img')) {
+            return;
+        }
+        
+        const subtopicId = container.dataset.subtopicId;
+        const loadingSpinner = container.querySelector('.image-loading');
+        
+        // Attempt to load image (with polling for generation)
+        attemptImageLoad(subtopicId, container, loadingSpinner, 0);
+    });
+}
+
+function attemptImageLoad(subtopicId, container, loadingSpinner, attemptCount) {
+    const maxAttempts = 30; // 30 seconds (1 second intervals)
+    const pollInterval = 1000; // 1 second
+    
+    fetch(`/api/image/${subtopicId}`)
+        .then(response => {
+            if (response.ok) {
+                // Image found - display it
+                return response.blob();
+            } else if (response.status === 404) {
+                // Image not found yet
+                if (attemptCount < maxAttempts) {
+                    // Retry after interval (image may still be generating)
+                    setTimeout(() => {
+                        attemptImageLoad(subtopicId, container, loadingSpinner, attemptCount + 1);
+                    }, pollInterval);
+                } else {
+                    // Timeout - hide spinner gracefully (no error shown)
+                    if (loadingSpinner) {
+                        loadingSpinner.style.display = 'none';
+                    }
+                }
+                return null;
+            } else {
+                // Other error - hide spinner gracefully
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                return null;
+            }
+        })
+        .then(blob => {
+            if (blob) {
+                // Create and display image
+                const imageUrl = URL.createObjectURL(blob);
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = 'Whiteboard diagram explaining the concept';
+                img.className = 'whiteboard-image rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow';
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                
+                // Click to expand functionality
+                img.addEventListener('click', () => openImageModal(imageUrl));
+                
+                // Hide loading spinner
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                
+                // Add image to container
+                container.appendChild(img);
+            }
+        })
+        .catch(error => {
+            // Network error - hide spinner gracefully (no error to user)
+            console.debug('Image load error:', error);
+            if (loadingSpinner) {
+                loadingSpinner.style.display = 'none';
+            }
+        });
+}
+
+function openImageModal(imageUrl) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.className = 'image-modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4';
+    modal.style.cursor = 'zoom-out';
+    
+    // Create expanded image
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.className = 'max-w-full max-h-full rounded-lg shadow-2xl';
+    img.style.cursor = 'zoom-out';
+    
+    modal.appendChild(img);
+    document.body.appendChild(modal);
+    
+    // Close on click
+    modal.addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    // Close on escape key
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+            if (document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+            document.removeEventListener('keydown', escapeHandler);
+        }
+    };
+    document.addEventListener('keydown', escapeHandler);
+}
 </script>
 {% endblock %}
 

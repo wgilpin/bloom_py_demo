@@ -4,15 +4,16 @@ This module initializes the FastAPI app, configures middleware, and loads
 environment variables for LLM providers and application settings.
 """
 
-import os
 import logging
-from pathlib import Path
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
 from bloom.database import init_database
 
@@ -44,6 +45,12 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 # Application settings
 DATABASE_PATH = os.getenv("DATABASE_PATH", "bloom.db")
 COMPLETION_THRESHOLD = int(os.getenv("COMPLETION_THRESHOLD", "3"))  # Correct answers for subtopic completion
+
+# Image Generation Configuration (for whiteboard images)
+ENABLE_IMAGE_GENERATION = os.getenv("ENABLE_IMAGE_GENERATION", "true").lower() == "true"
+IMAGE_GENERATION_MODEL = os.getenv("IMAGE_GENERATION_MODEL", "gemini-3-pro-image")
+IMAGE_GENERATION_RESOLUTION = os.getenv("IMAGE_GENERATION_RESOLUTION", "2K")
+MAX_IMAGE_SIZE = int(os.getenv("MAX_IMAGE_SIZE", "5242880"))  # 5MB in bytes for 2K resolution images
 
 # Validate API key for selected provider
 def validate_api_keys():
@@ -80,6 +87,14 @@ async def lifespan(_app: FastAPI):
     init_database(DATABASE_PATH)
     logger.info("✓ Database initialized: %s", DATABASE_PATH)
     logger.info("✓ Completion threshold: %s correct answers", COMPLETION_THRESHOLD)
+    
+    # Log image generation configuration
+    if ENABLE_IMAGE_GENERATION:
+        logger.info("✓ Image generation enabled: %s at %s resolution (max size: %d MB)", 
+                   IMAGE_GENERATION_MODEL, IMAGE_GENERATION_RESOLUTION, MAX_IMAGE_SIZE // 1048576)
+    else:
+        logger.info("⚠️  Image generation disabled (text-only mode)")
+    
     logger.info("✓ Ready to serve requests at http://localhost:8000")
     logger.info("   Note: Run 'uv run python -m bloom.load_syllabus' to load sample data if needed")
     
@@ -140,7 +155,7 @@ async def health_check():
 # Route Registration (imported after app creation to avoid circular imports)
 # ============================================================================
 
-from bloom.routes import student, admin
+from bloom.routes import admin, student
 
 app.include_router(student.router)
 app.include_router(admin.router)

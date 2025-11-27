@@ -7,8 +7,8 @@ This module defines schemas for:
 """
 
 from typing import Literal, Optional, TypedDict
-from pydantic import BaseModel, Field, field_validator
 
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Syllabus Models (for JSON loading and validation)
@@ -164,6 +164,7 @@ class CalculatorRequest(BaseModel):
 # ============================================================================
 
 from datetime import datetime, timezone
+
 from bloom.database import get_connection
 
 
@@ -216,6 +217,20 @@ class SyllabusLoadResultDict(TypedDict):
     """Type definition for syllabus load operation results."""
     topics_loaded: int
     subtopics_loaded: int
+
+
+class CachedImage(TypedDict):
+    """Type definition for cached whiteboard image records.
+    
+    Stores generated whiteboard-style PNG images for subtopic expositions.
+    """
+    subtopic_id: int
+    image_data: bytes
+    image_format: str
+    generated_at: str
+    prompt_version: str
+    model_identifier: str
+    file_size: int
 
 
 def create_session(subtopic_id: int, db_path: str = "bloom.db") -> int:
