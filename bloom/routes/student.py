@@ -223,7 +223,7 @@ async def start_session(
                 "request": request,
                 "session_id": session_id,
                 "subtopic_name": subtopic_name,
-                "calculator_visible": state["calculator_visible"],
+                "calculator_visible": initial_state["calculator_visible"],
             },
         )
 
