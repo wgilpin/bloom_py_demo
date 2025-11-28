@@ -23,6 +23,7 @@ from bloom.models import (
 )
 from bloom.tutor_agent import TutorState, load_agent_checkpoint, save_agent_checkpoint
 
+# pylint: disable=logging-fstring-interpolation
 logger = logging.getLogger("bloom.routes")
 
 
