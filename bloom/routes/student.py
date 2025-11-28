@@ -427,11 +427,17 @@ async def get_chat_messages(request: Request, session_id: int):
 
     # Render messages as HTML
     html_parts = []
+    first_tutor_message = True
     for msg in messages:
+        # Only show image container for the first tutor message (exposition)
+        show_image = subtopic_id if (msg.get("role") == "tutor" and first_tutor_message) else None
+        if msg.get("role") == "tutor":
+            first_tutor_message = False
+
         html_parts.append(
             templates.get_template("components/message.html").render(
                 message=msg,
-                subtopic_id=subtopic_id,
+                subtopic_id=show_image,
                 request=request,
             )
         )
@@ -622,16 +628,13 @@ async def post_chat_message(
         save_agent_checkpoint(session_id, state, DATABASE_PATH)
 
         # Return ALL new messages (student + tutor) as HTML
-        # Get subtopic_id for image loading (spec 003)
-        session = get_session(session_id, DATABASE_PATH)
-        subtopic_id = session.get("subtopic_id") if session else None
-
+        # Note: Don't show image container for these messages - image only shows on initial exposition
         html_parts = []
         for msg in new_messages:
             html_parts.append(
                 templates.get_template("components/message.html").render(
                     message=msg,
-                    subtopic_id=subtopic_id,
+                    subtopic_id=None,  # Never show image on subsequent messages
                     request=request,
                 )
             )
