@@ -243,10 +243,12 @@ function openImageModal(imageUrl) {
         <!-- Message Input Form -->
         <div class="px-6 py-4 border-t border-gray-200 bg-white">
             <form 
+                id="chat-form"
                 hx-post="/chat/message"
                 hx-target="#chat-messages"
                 hx-swap="beforeend"
-                hx-on::after-request="document.getElementById('message-input').value = ''; scrollToBottom();"
+                hx-timeout="30000"
+                hx-on::after-request="handleAfterRequest(event)"
                 class="flex space-x-3"
             >
                 <input type="hidden" name="session_id" value="{{ session_id }}">
@@ -260,12 +262,47 @@ function openImageModal(imageUrl) {
                     class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                 <button 
+                    id="send-button"
                     type="submit"
-                    class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Send
                 </button>
             </form>
+            
+            <!-- Loading indicator -->
+            <div id="send-indicator" class="mt-3 hidden">
+                <div class="inline-flex items-center space-x-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                    <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-sm text-blue-700 font-medium">Processing your message...</span>
+                </div>
+            </div>
+            
+            <!-- Error message container -->
+            <div id="error-container" class="mt-3 hidden">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-start space-x-3">
+                        <svg class="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold text-red-900">Server Temporarily Unavailable</p>
+                            <p class="text-xs text-red-700 mt-1" id="error-message">The server took too long to respond. Please try again.</p>
+                        </div>
+                        <button 
+                            onclick="hideError()"
+                            class="text-red-400 hover:text-red-600"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
             
             <!-- Retry button (hidden by default, shown on error) -->
             <div id="retry-container" class="mt-2 hidden">
@@ -311,6 +348,117 @@ function openImageModal(imageUrl) {
     document.body.addEventListener('htmx:afterSwap', (event) => {
         typeset();
         scrollToBottom();
+    });
+    
+    // Handle after request (clear input on success)
+    function handleAfterRequest(event) {
+        const xhr = event.detail.xhr;
+        if (xhr && xhr.status >= 200 && xhr.status < 300) {
+            // Success - clear the input
+            document.getElementById('message-input').value = '';
+            scrollToBottom();
+        }
+    }
+    
+    // Show error message
+    function showError(message) {
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        errorMessage.textContent = message;
+        errorContainer.classList.remove('hidden');
+    }
+    
+    // Hide error message
+    function hideError() {
+        const errorContainer = document.getElementById('error-container');
+        errorContainer.classList.add('hidden');
+    }
+    
+    // Handle htmx events for loading and error states
+    document.body.addEventListener('htmx:beforeRequest', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide any previous errors
+            hideError();
+            // Show loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.remove('hidden');
+            // Disable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+        }
+    });
+    
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+            
+            // Check if request was successful
+            const xhr = event.detail.xhr;
+            if (xhr && xhr.status >= 200 && xhr.status < 300) {
+                // Success - input already cleared by handleAfterRequest
+            }
+        }
+    });
+    
+    document.body.addEventListener('htmx:timeout', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            event.preventDefault(); // Prevent default timeout behavior
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            showError('The server took too long to respond. Please try again in a moment.');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
+    
+    document.body.addEventListener('htmx:responseError', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            
+            const status = event.detail.xhr ? event.detail.xhr.status : 0;
+            if (status === 0) {
+                showError('Unable to reach the server. Please check your connection and try again.');
+            } else if (status >= 500) {
+                showError('The server encountered an error. Please try again in a moment.');
+            } else {
+                showError('An error occurred while sending your message. Please try again.');
+            }
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
+    
+    document.body.addEventListener('htmx:sendError', function(event) {
+        // This catches network errors when the server is unreachable
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            
+            showError('Unable to reach the server. Please check that the server is running and try again.');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
     });
     
     // Calculator functions
