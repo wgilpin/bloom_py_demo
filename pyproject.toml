@@ -43,4 +43,5 @@ target-version = "py313"
 [dependency-groups]
 dev = [
     "djlint>=1.36.4",
+    "isort>=7.0.0",
 ]
