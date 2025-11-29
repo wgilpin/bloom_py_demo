@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from bloom.main import DATABASE_PATH, templates
 from bloom.models import (
@@ -217,15 +217,10 @@ async def start_session(
             f"Session {session_id} initialized successfully (exposition will generate on page load)"
         )
 
-        # Redirect to chat interface
-        return templates.TemplateResponse(
-            "chat.html",
-            {
-                "request": request,
-                "session_id": session_id,
-                "subtopic_name": subtopic_name,
-                "calculator_visible": initial_state["calculator_visible"],
-            },
+        # Redirect to chat interface (GET endpoint - allows bookmarking/refreshing)
+        return RedirectResponse(
+            url=f"/chat?session_id={session_id}",
+            status_code=303  # POST -> GET redirect
         )
 
     except Exception as e:
@@ -279,15 +274,10 @@ async def resume_session(request: Request, session_id: int = Form(...)):
 
         logger.info(f"Session {session_id} resumed successfully")
 
-        # Redirect to chat interface
-        return templates.TemplateResponse(
-            "chat.html",
-            {
-                "request": request,
-                "session_id": session_id,
-                "subtopic_name": subtopic_name,
-                "calculator_visible": state.get("calculator_visible", False),
-            },
+        # Redirect to chat interface (GET endpoint - allows bookmarking/refreshing)
+        return RedirectResponse(
+            url=f"/chat?session_id={session_id}",
+            status_code=303  # POST -> GET redirect
         )
 
     except HTTPException:
@@ -364,7 +354,11 @@ async def abandon_session(session_id: int = Form(None)):
 
 @router.get("/chat", response_class=HTMLResponse)
 async def get_chat(request: Request, session_id: int):
-    """Render the chat interface for an active session."""
+    """Render the chat interface for an active session.
+    
+    This is a GET endpoint so users can bookmark/refresh the chat page.
+    """
+    from bloom.database import get_connection
 
     # Get session details
     session = get_session(session_id, DATABASE_PATH)
@@ -375,8 +369,23 @@ async def get_chat(request: Request, session_id: int):
     state = load_agent_checkpoint(session_id, DATABASE_PATH)
     calculator_visible = state.get("calculator_visible", False) if state else False
 
-    # Get subtopic name (we'll need to query this - simplified for now)
-    subtopic_name = f"Subtopic {session['subtopic_id']}"
+    # Get subtopic name from database
+    conn = get_connection(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """
+        SELECT st.name
+        FROM subtopics st
+        WHERE st.id = ?
+    """,
+        (session["subtopic_id"],),
+    )
+    
+    subtopic_row = cursor.fetchone()
+    conn.close()
+    
+    subtopic_name = subtopic_row["name"] if subtopic_row else f"Subtopic {session['subtopic_id']}"
 
     return templates.TemplateResponse(
         "chat.html",
