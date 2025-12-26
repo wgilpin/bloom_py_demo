@@ -22,6 +22,7 @@ from bloom.models import (
     update_session,
 )
 from bloom.tutor_agent import TutorState, load_agent_checkpoint, save_agent_checkpoint
+from bloom.calculator_evaluator import evaluate_expression
 
 # pylint: disable=logging-fstring-interpolation
 logger = logging.getLogger("bloom.routes")
@@ -813,3 +814,241 @@ async def retry_last_message(request: Request, session_id: int = Form(...)):
             subtopic_id=None,
             request=request,
         )
+
+
+# ============================================================================
+# Calculator Evaluation (Advanced Functions - Spec 004)
+# ============================================================================
+
+
+@router.post("/calculator/evaluate")
+async def evaluate_calculator_expression(
+    expression: str = Form(...),
+    session_id: int = Form(None)
+):
+    """
+    Evaluate a calculator expression server-side.
+    
+    This endpoint provides backend evaluation for the advanced calculator,
+    following the htmx architecture pattern. The expression is validated,
+    transformed, and evaluated on the server.
+    
+    Args:
+        expression: Calculator expression string (e.g., "sin(30) + 5")
+        session_id: Optional session ID for logging calculation history
+        
+    Returns:
+        JSON response with 'result' (number) or 'error' (string) key
+        
+    Examples:
+        POST /calculator/evaluate
+        expression=sin(30)+5
+        -> {"result": 10.5}
+        
+        POST /calculator/evaluate
+        expression=sqrt(-4)
+        -> {"error": "Maths Error"}
+    """
+    from fastapi.responses import JSONResponse
+    from bloom.database import get_connection
+    
+    # Evaluate the expression
+    result = evaluate_expression(expression)
+    
+    # Log calculation history if session_id provided
+    if session_id and 'result' in result:
+        try:
+            conn = get_connection(DATABASE_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO calculator_history (session_id, expression, result, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (session_id, expression, result['result'], datetime.utcnow().isoformat())
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to log calculator history: {e}")
+            # Don't fail the request if logging fails
+    
+    return JSONResponse(content=result)
+
+
+@router.post("/calculator/button")
+async def calculator_button_press(
+    request: Request,
+    button: str = Form(...),
+    session_id: int = Form(None),
+    expression: str = Form(None)
+):
+    """
+    Handle calculator button press (htmx endpoint).
+    
+    Maintains calculator state server-side in session and returns
+    HTML fragment with updated display value.
+    
+    Args:
+        button: Button identifier (e.g., '7', '+', 'sin', '=')
+        session_id: Optional session ID for logging
+        expression: Optional manually edited expression (synced before button press)
+        
+    Returns:
+        HTML fragment with updated calculator display
+    """
+    from bloom.calculator_state import CalculatorState
+    
+    # Get calculator state from session (stored in cookie/server-side session)
+    # For now, we'll use a simple in-memory store (in production, use proper session management)
+    if not hasattr(request.app.state, 'calculator_states'):
+        request.app.state.calculator_states = {}
+    
+    # Use session_id or a default key
+    state_key = f"calc_{session_id}" if session_id else "calc_default"
+    
+    # Get or create calculator state
+    if state_key not in request.app.state.calculator_states:
+        calc_state = CalculatorState()
+        request.app.state.calculator_states[state_key] = calc_state.to_dict()
+    else:
+        calc_state = CalculatorState.from_dict(request.app.state.calculator_states[state_key])
+    
+    # Sync manually edited expression first (if provided, e.g., from Enter key press)
+    if expression is not None:
+        calc_state.expression = expression if expression else '0'
+        calc_state.error_message = None
+    
+    # Handle button press
+    response = calc_state.handle_button(button, session_id)
+    
+    # Save state
+    request.app.state.calculator_states[state_key] = calc_state.to_dict()
+    
+    # Return HTML fragment for htmx swap
+    html = f"""
+    <div id="calc-display-container">
+        <!-- Error message -->
+        <div id="calc-error-display" class="text-right mb-1 {'hidden' if not response.get('error') else ''}">
+            <span class="text-red-600 text-sm font-semibold">{response.get('error', '')}</span>
+        </div>
+        
+        <!-- Display (editable) -->
+        <div class="text-right mb-3">
+            <input 
+                type="text" 
+                id="calc-display" 
+                name="expression"
+                value="{response['display']}"
+                hx-post="/calculator/sync"
+                hx-trigger="change"
+                hx-include="#calc-form-data"
+                hx-target="#calc-display-container"
+                hx-swap="outerHTML"
+                onkeypress="if(event.key==='Enter'){{event.preventDefault(); document.getElementById('calc-eval-btn').click();}}"
+                class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
+                placeholder="0"
+            >
+        </div>
+        
+        <!-- Hidden = button for Enter key trigger -->
+        <button id="calc-eval-btn" 
+                style="display:none"
+                hx-post="/calculator/button" 
+                hx-vals='{{"button": "="}}'
+                hx-include="#calc-form-data,#calc-display"
+                hx-target="#calc-display-container"
+                hx-swap="outerHTML"></button>
+    </div>
+    """
+    
+    # If SHIFT button was pressed, also update button labels via additional response
+    if 'shift_labels' in response:
+        # For SHIFT mode, we could return additional htmx targets
+        # For now, keep it simple
+        pass
+    
+    return HTMLResponse(content=html)
+
+
+@router.post("/calculator/sync")
+async def calculator_sync_expression(
+    request: Request,
+    expression: str = Form(...),
+    session_id: int = Form(None)
+):
+    """
+    Sync manually edited expression from the calculator display.
+    
+    Allows users to click and edit the display directly to fix errors
+    or make quick changes without using DEL repeatedly.
+    
+    Args:
+        expression: The manually edited expression from the display
+        session_id: Optional session ID for state management
+        
+    Returns:
+        HTML fragment with updated calculator display
+    """
+    from bloom.calculator_state import CalculatorState
+    
+    # Get calculator state from session
+    if not hasattr(request.app.state, 'calculator_states'):
+        request.app.state.calculator_states = {}
+    
+    state_key = f"calc_{session_id}" if session_id else "calc_default"
+    
+    # Get or create calculator state
+    if state_key not in request.app.state.calculator_states:
+        calc_state = CalculatorState()
+        request.app.state.calculator_states[state_key] = calc_state.to_dict()
+    else:
+        calc_state = CalculatorState.from_dict(request.app.state.calculator_states[state_key])
+    
+    # Update expression with manually edited value
+    calc_state.expression = expression if expression else '0'
+    
+    # Clear error message on manual edit (user is fixing it)
+    calc_state.error_message = None
+    
+    # Save state
+    request.app.state.calculator_states[state_key] = calc_state.to_dict()
+    
+    # Return HTML fragment for htmx swap
+    html = f"""
+    <div id="calc-display-container">
+        <!-- Error message -->
+        <div id="calc-error-display" class="text-right mb-1 hidden">
+            <span class="text-red-600 text-sm font-semibold"></span>
+        </div>
+        
+        <!-- Display (editable) -->
+        <div class="text-right mb-3">
+            <input 
+                type="text" 
+                id="calc-display" 
+                name="expression"
+                value="{calc_state.expression}"
+                hx-post="/calculator/sync"
+                hx-trigger="change"
+                hx-include="#calc-form-data"
+                hx-target="#calc-display-container"
+                hx-swap="outerHTML"
+                onkeypress="if(event.key==='Enter'){{event.preventDefault(); document.getElementById('calc-eval-btn').click();}}"
+                class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
+                placeholder="0"
+            >
+        </div>
+        
+        <!-- Hidden = button for Enter key trigger -->
+        <button id="calc-eval-btn" 
+                style="display:none"
+                hx-post="/calculator/button" 
+                hx-vals='{{"button": "="}}'
+                hx-include="#calc-form-data,#calc-display"
+                hx-target="#calc-display-container"
+                hx-swap="outerHTML"></button>
+    </div>
+    """
+    
+    return HTMLResponse(content=html)

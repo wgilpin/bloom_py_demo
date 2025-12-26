@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: Bloom Tutor API - Calculator Endpoints
+  version: 1.0.0
+  description: |
+    API endpoints for calculator functionality in Bloom tutor app.
+    This spec documents the calculator compute/logging endpoint if it exists,
+    or notes that calculator operates client-side with optional logging.
+
+paths:
+  /calculator/compute:
+    post:
+      summary: Evaluate calculator expression and log to history
+      description: |
+        Evaluates a mathematical expression and logs the calculation to calculator history.
+        This endpoint may already exist from the basic calculator implementation.
+        If it doesn't exist, calculator can operate fully client-side without this endpoint.
+      operationId: computeCalculatorExpression
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - expression
+                - result
+              properties:
+                expression:
+                  type: string
+                  description: Mathematical expression entered by user
+                  example: "sin(30) + 5"
+                result:
+                  type: string
+                  description: Calculated result
+                  example: "5.5"
+                functions_used:
+                  type: array
+                  items:
+                    type: string
+                  description: Optional array of function names used (e.g., ["sin", "sqrt"])
+                  example: ["sin"]
+      responses:
+        '200':
+          description: Calculation logged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logged:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid request (missing expression or result)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Missing required fields: expression, result"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Internal server error"
+
+  /calculator/history:
+    get:
+      summary: Get calculator history for current session
+      description: |
+        Retrieves calculator calculation history for the current tutoring session.
+        Used by tutor agent to see student's calculation steps.
+      operationId: getCalculatorHistory
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Current tutoring session ID
+      responses:
+        '200':
+          description: Calculator history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        expression:
+                          type: string
+                        result:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Session not found"
+
+# Note: Calculator operates primarily client-side. These endpoints are optional
+# for logging purposes. If endpoints don't exist, calculator can function
+# without server-side evaluation or logging (though logging is recommended
+# per FR-020 for tutor reference).
+

@@ -1,0 +1,1248 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - {{ subtopic_name }} | Bloom{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center space-x-4">
+    <span class="text-sm text-gray-600">Studying: <span class="font-semibold">{{ subtopic_name }}</span></span>
+    <button 
+        onclick="startNewChat()"
+        class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+    >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+        New Chat
+    </button>
+    <a href="/" class="text-sm text-blue-600 hover:text-blue-800">← Back to Syllabus</a>
+</div>
+
+<script>
+function startNewChat() {
+    if (confirm('End this session and start a new topic?\n\nYour progress will be saved.')) {
+        // Abandon ALL active sessions (empty body = abandon all)
+        fetch('/session/abandon', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: ''
+        }).then(() => {
+            window.location.href = '/';
+        });
+    }
+}
+
+// Whiteboard Image Progressive Loading (spec 003)
+// This loads images after text displays, with polling for first-time generation
+document.addEventListener('DOMContentLoaded', function() {
+    loadWhiteboardImages();
+});
+
+// Also trigger on htmx afterSwap (when messages update)
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'chat-messages') {
+        loadWhiteboardImages();
+    }
+});
+
+function loadWhiteboardImages() {
+    // Find all image containers with subtopic_id
+    const containers = document.querySelectorAll('.whiteboard-image-container[data-subtopic-id]');
+    
+    containers.forEach(container => {
+        // Skip if already loaded
+        if (container.querySelector('img')) {
+            return;
+        }
+        
+        const subtopicId = container.dataset.subtopicId;
+        const loadingSpinner = container.querySelector('.image-loading');
+        
+        // Attempt to load image (with polling for generation)
+        attemptImageLoad(subtopicId, container, loadingSpinner, 0);
+    });
+}
+
+function attemptImageLoad(subtopicId, container, loadingSpinner, attemptCount) {
+    const maxAttempts = 30; // 30 seconds (1 second intervals)
+    const pollInterval = 1000; // 1 second
+    
+    fetch(`/api/image/${subtopicId}`)
+        .then(response => {
+            if (response.ok) {
+                // Image found - display it
+                return response.blob();
+            } else if (response.status === 404) {
+                // Image not found yet
+                if (attemptCount < maxAttempts) {
+                    // Retry after interval (image may still be generating)
+                    setTimeout(() => {
+                        attemptImageLoad(subtopicId, container, loadingSpinner, attemptCount + 1);
+                    }, pollInterval);
+                } else {
+                    // Timeout - hide spinner gracefully (no error shown)
+                    if (loadingSpinner) {
+                        loadingSpinner.style.display = 'none';
+                    }
+                }
+                return null;
+            } else {
+                // Other error - hide spinner gracefully
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                return null;
+            }
+        })
+        .then(blob => {
+            if (blob) {
+                // Create and display image
+                const imageUrl = URL.createObjectURL(blob);
+                const img = document.createElement('img');
+                img.src = imageUrl;
+                img.alt = 'Whiteboard diagram explaining the concept';
+                img.className = 'whiteboard-image rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow';
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                
+                // Click to expand functionality
+                img.addEventListener('click', () => openImageModal(imageUrl));
+                
+                // Hide loading spinner
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                
+                // Add image to container
+                container.appendChild(img);
+            }
+        })
+        .catch(error => {
+            // Network error - hide spinner gracefully (no error to user)
+            console.debug('Image load error:', error);
+            if (loadingSpinner) {
+                loadingSpinner.style.display = 'none';
+            }
+        });
+}
+
+function openImageModal(imageUrl) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.className = 'image-modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4';
+    modal.style.cursor = 'zoom-out';
+    
+    // Create expanded image
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.className = 'max-w-full max-h-full rounded-lg shadow-2xl';
+    img.style.cursor = 'zoom-out';
+    
+    modal.appendChild(img);
+    document.body.appendChild(modal);
+    
+    // Close on click
+    modal.addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    // Close on escape key
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+            if (document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+            document.removeEventListener('keydown', escapeHandler);
+        }
+    };
+    document.addEventListener('keydown', escapeHandler);
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Main Container with Chat and Calculator side-by-side -->
+    <div class="flex gap-4">
+        <!-- Chat Container -->
+        <div class="flex-1 bg-white rounded-lg shadow-lg border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+            
+            <!-- Chat Header -->
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-900">{{ subtopic_name }}</h2>
+                        <p class="text-sm text-gray-600 mt-1">Your AI tutor is here to help you learn!</p>
+                    </div>
+                    <!-- Calculator Toggle Button (visible when calculator available) -->
+                    {% if calculator_visible %}
+                    <button 
+                        id="calc-open-btn"
+                        onclick="toggleCalculator()"
+                        class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors hidden"
+                        title="Open calculator"
+                    >
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        </svg>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Messages Container -->
+            <div 
+                id="chat-messages" 
+                class="flex-1 overflow-y-auto p-6 space-y-4 chat-scroll"
+                hx-get="/chat/messages?session_id={{ session_id }}"
+                hx-trigger="load"
+                hx-swap="innerHTML"
+                hx-indicator="#loading-indicator"
+            >
+                <!-- Messages will be loaded here via htmx -->
+                <div id="loading-indicator" class="text-center py-12">
+                    <div class="inline-flex items-center space-x-3 bg-blue-50 px-6 py-4 rounded-lg border border-blue-200">
+                        <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <div class="text-left">
+                            <p class="text-sm font-semibold text-blue-900">Loading your lesson...</p>
+                            <p class="text-xs text-blue-600 mt-1">Bloom is preparing your personalized explanation</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Message Input Form -->
+            <div class="px-6 py-4 border-t border-gray-200 bg-white">
+                <form 
+                    id="chat-form"
+                    hx-post="/chat/message"
+                    hx-target="#chat-messages"
+                    hx-swap="beforeend"
+                    hx-timeout="30000"
+                    hx-on::after-request="handleAfterRequest(event)"
+                    class="flex space-x-3"
+                >
+                    <input type="hidden" name="session_id" value="{{ session_id }}">
+                    <input 
+                        type="text" 
+                        id="message-input"
+                        name="message" 
+                        placeholder="Type your answer or question..."
+                        required
+                        autocomplete="off"
+                        class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                    <button 
+                        id="send-button"
+                        type="submit"
+                        class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Send
+                    </button>
+                </form>
+                
+                <!-- Loading indicator -->
+                <div id="send-indicator" class="mt-3 hidden">
+                    <div class="inline-flex items-center space-x-2 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                        <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-sm text-blue-700 font-medium">Processing your message...</span>
+                    </div>
+                </div>
+                
+                <!-- Error message container -->
+                <div id="error-container" class="mt-3 hidden">
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div class="flex items-start space-x-3">
+                            <svg class="w-5 h-5 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-red-900">Server Temporarily Unavailable</p>
+                                <p class="text-xs text-red-700 mt-1" id="error-message">The server took too long to respond. Please try again.</p>
+                            </div>
+                            <button 
+                                onclick="hideError()"
+                                class="text-red-400 hover:text-red-600"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Retry button (hidden by default, shown on error) -->
+                <div id="retry-container" class="mt-2 hidden">
+                    <button 
+                        hx-post="/chat/retry"
+                        hx-vals='{"session_id": {{ session_id }}}'
+                        hx-target="#chat-messages"
+                        hx-swap="beforeend"
+                        class="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                        🔄 Retry last message
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Calculator (conditionally visible, positioned to the right) -->
+        {% if calculator_visible %}
+        <div id="calculator-container" class="w-80 bg-white rounded-lg shadow-lg border border-gray-200 p-4 h-[calc(100vh-12rem)] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Calculator</h3>
+                <button 
+                    id="calc-close-btn"
+                    onclick="toggleCalculator()"
+                    class="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                    title="Close calculator"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="flex-1 flex flex-col justify-center">
+                <!-- Error message display (shown above calculator display) -->
+                <div id="calc-error-display" class="text-right mb-1 hidden">
+                    <span class="text-red-600 text-sm font-semibold">Maths Error</span>
+                </div>
+                
+                <div class="text-right mb-3">
+                    <!-- Hidden form for htmx calculator evaluation -->
+                    <form id="calc-form" hx-post="/calculator/evaluate" hx-swap="none" style="display: none;">
+                        <input type="hidden" name="expression" id="calc-expression-input">
+                        <input type="hidden" name="session_id" value="{{ session_id }}">
+                    </form>
+                    
+                    <input 
+                        type="text" 
+                        id="calc-display" 
+                        readonly 
+                        value="0"
+                        class="w-full px-4 py-3 text-2xl font-mono text-right bg-gray-100 rounded border border-gray-300"
+                    >
+                </div>
+                <div class="grid grid-cols-5 gap-2">
+                    <!-- Row 1: SHIFT, Pi, MC, MR, M+ -->
+                    <button id="shift-btn" class="calc-btn-function" onclick="handleShift()">SHIFT</button>
+                    <button class="calc-btn-function" onclick="handlePi()">π</button>
+                    <button id="mclear-btn" class="calc-btn-memory" onclick="handleMClear()">MC</button>
+                    <button id="mrecall-btn" class="calc-btn-memory" onclick="handleMRecall()">MR</button>
+                    <button id="mplus-btn" class="calc-btn-memory" onclick="handleMPlus()">M+</button>
+                    
+                    <!-- Row 2: sin, cos, tan, (, ) -->
+                    <button id="sin-btn" class="calc-btn-function" onclick="handleSin()">sin</button>
+                    <button id="cos-btn" class="calc-btn-function" onclick="handleCos()">cos</button>
+                    <button id="tan-btn" class="calc-btn-function" onclick="handleTan()">tan</button>
+                    <!-- Parentheses buttons (T047) - Already functional with calcAppend() -->
+                    <button class="calc-btn-operator" onclick="calcAppend('(')">(</button>
+                    <button class="calc-btn-operator" onclick="calcAppend(')')">)</button>
+                    
+                    <!-- Row 3: x^2, x^y, sqrt, AC, DEL -->
+                    <button class="calc-btn-function" onclick="handleSquare()">x²</button>
+                    <button class="calc-btn-function" onclick="handleXToY()">x^y</button>
+                    <button class="calc-btn-function" onclick="handleSqrt()">√</button>
+                    <button class="calc-btn-clear" onclick="handleAllClear()">AC</button>
+                    <button class="calc-btn-operator" onclick="handleDelete()">DEL</button>
+                    
+                    <!-- Row 4: 7, 8, 9, 1/x, / -->
+                    <button class="calc-btn-number" onclick="calcAppend('7')">7</button>
+                    <button class="calc-btn-number" onclick="calcAppend('8')">8</button>
+                    <button class="calc-btn-number" onclick="calcAppend('9')">9</button>
+                    <button class="calc-btn-function" onclick="handleReciprocal()">1/x</button>
+                    <button class="calc-btn-operator" onclick="calcAppend('/')">/</button>
+                    
+                    <!-- Row 5: 4, 5, 6, x10^x, * -->
+                    <button class="calc-btn-number" onclick="calcAppend('4')">4</button>
+                    <button class="calc-btn-number" onclick="calcAppend('5')">5</button>
+                    <button class="calc-btn-number" onclick="calcAppend('6')">6</button>
+                    <button class="calc-btn-function" onclick="handleScientificNotation()">×10^x</button>
+                    <button class="calc-btn-operator" onclick="calcAppend('*')">×</button>
+                    
+                    <!-- Row 6: 1, 2, 3, +/-, - -->
+                    <button class="calc-btn-number" onclick="calcAppend('1')">1</button>
+                    <button class="calc-btn-number" onclick="calcAppend('2')">2</button>
+                    <button class="calc-btn-number" onclick="calcAppend('3')">3</button>
+                    <button class="calc-btn-function" onclick="handleSignChange()">+/-</button>
+                    <button class="calc-btn-operator" onclick="calcAppend('-')">-</button>
+                    
+                    <!-- Row 7: 0, ., Ans, =, + -->
+                    <button class="calc-btn-number" onclick="calcAppend('0')">0</button>
+                    <button class="calc-btn-number" onclick="calcAppend('.')">.</button>
+                    <button class="calc-btn-function" onclick="handleAns()">Ans</button>
+                    <button class="calc-btn-equals" onclick="calcEvaluate()">=</button>
+                    <button class="calc-btn-operator" onclick="calcAppend('+')">+</button>
+                </div>
+                <p class="text-xs text-gray-500 text-center mt-3">Calculator available for numerical problems</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Auto-scroll to bottom of chat
+    function scrollToBottom() {
+        const container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    // Typeset math content when messages are loaded
+    function typeset() {
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
+        }
+    }
+    
+    // Scroll on initial load
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            scrollToBottom();
+            typeset();
+        }, 100);
+    });
+    
+    // Re-typeset math after htmx swaps
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+        typeset();
+        scrollToBottom();
+    });
+    
+    // Handle after request (clear input on success)
+    function handleAfterRequest(event) {
+        const xhr = event.detail.xhr;
+        if (xhr && xhr.status >= 200 && xhr.status < 300) {
+            // Success - clear the input
+            document.getElementById('message-input').value = '';
+            scrollToBottom();
+        }
+    }
+    
+    // Show error message
+    function showError(message) {
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        errorMessage.textContent = message;
+        errorContainer.classList.remove('hidden');
+    }
+    
+    // Hide error message
+    function hideError() {
+        const errorContainer = document.getElementById('error-container');
+        errorContainer.classList.add('hidden');
+    }
+    
+    // Handle htmx events for loading and error states
+    document.body.addEventListener('htmx:beforeRequest', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide any previous errors
+            hideError();
+            // Show loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.remove('hidden');
+            // Disable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+        }
+    });
+    
+    document.body.addEventListener('htmx:afterRequest', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+            
+            // Check if request was successful
+            const xhr = event.detail.xhr;
+            if (xhr && xhr.status >= 200 && xhr.status < 300) {
+                // Success - input already cleared by handleAfterRequest
+            }
+        }
+    });
+    
+    document.body.addEventListener('htmx:timeout', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            event.preventDefault(); // Prevent default timeout behavior
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            showError('The server took too long to respond. Please try again in a moment.');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
+    
+    document.body.addEventListener('htmx:responseError', function(event) {
+        // Only handle chat form requests
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            
+            const status = event.detail.xhr ? event.detail.xhr.status : 0;
+            if (status === 0) {
+                showError('Unable to reach the server. Please check your connection and try again.');
+            } else if (status >= 500) {
+                showError('The server encountered an error. Please try again in a moment.');
+            } else {
+                showError('An error occurred while sending your message. Please try again.');
+            }
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
+    
+    document.body.addEventListener('htmx:sendError', function(event) {
+        // This catches network errors when the server is unreachable
+        if (event.detail.elt.id === 'chat-form') {
+            // Hide loading indicator
+            const indicator = document.getElementById('send-indicator');
+            indicator.classList.add('hidden');
+            
+            showError('Unable to reach the server. Please check that the server is running and try again.');
+            // Re-enable the send button
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = false;
+            sendButton.textContent = 'Send';
+        }
+    });
+    
+    // ============================================================================
+    // CALCULATOR IMPLEMENTATION - Current State Documentation
+    // ============================================================================
+    // 
+    // STATE VARIABLES:
+    // - calcExpression (string): Current expression being built from button presses
+    //   - Initial value: '' (empty string)
+    //   - Updated by: calcAppend() when buttons are pressed
+    //   - Reset by: calcClear() to '0'
+    //   - Error state: 'Error' (displayed when evaluation fails)
+    //
+    // UI ELEMENTS:
+    // - calc-display (input element): Display showing current expression/result
+    //   - ID: 'calc-display'
+    //   - Read-only text input
+    //   - Updated by: calcAppend(), calcClear(), calcEvaluate()
+    //
+    // FUNCTIONS:
+    // - calcAppend(value): Appends a character/value to the current expression
+    //   - Parameters: value (string) - character to append (number, operator, etc.)
+    //   - Behavior: If expression is '0' or 'Error', replaces it; otherwise appends
+    //   - Updates: calcExpression variable and calc-display element
+    //
+    // - calcClear(): Clears the calculator expression
+    //   - Behavior: Resets calcExpression to '0' and updates display
+    //
+    // - calcEvaluate(): Evaluates the current expression
+    //   - Behavior: 
+    //     1. Sanitizes input (allows only: 0-9, +, -, *, /, ., parentheses)
+    //     2. Uses eval() to evaluate sanitized expression
+    //     3. Updates calcExpression and display with result
+    //     4. On error: Sets calcExpression to 'Error' and displays it
+    //   - TODO: Log calculation to server (commented in code)
+    //
+    // - toggleCalculator(): Shows/hides calculator container
+    //   - Toggles visibility of calculator-container and calc-open-btn elements
+    //
+    // CURRENT LAYOUT:
+    // - Grid: 4 columns (grid-cols-4)
+    // - Buttons: C, /, ×, -, 7-9, 4-6, 1-3, 0, ., =, +, (, )
+    // - Row structure:
+    //   Row 1: C, /, ×, -
+    //   Row 2: 7, 8, 9, +
+    //   Row 3: 4, 5, 6, (
+    //   Row 4: 1, 2, 3, )
+    //   Row 5: 0, ., = (spanning 2 columns)
+    //
+    // LIMITATIONS (to be addressed in advanced functions):
+    // - No trigonometric functions (sin, cos, tan)
+    // - No inverse trigonometric functions (arcsin, arccos, arctan)
+    // - No powers (x², x^y)
+    // - No roots (√, ∛, nth root)
+    // - No scientific notation (×10^x)
+    // - No memory functions (M+, MC, MR)
+    // - No π constant
+    // - No reciprocal (1/x)
+    // - No sign change (+/-)
+    // - No Ans (previous answer)
+    // - No SHIFT mode for inverse functions
+    // - No multi-step input handling (x^y, nth root, ×10^x)
+    // - Error handling: Only displays "Error", no "Maths Error" with specific messages
+    // - No expression validation before evaluation (division by zero, invalid inputs)
+    // - No degrees/radians conversion for trigonometry
+    // - No expression transformation for advanced functions
+    //
+    // ============================================================================
+    
+    // Calculator functions
+    // ============================================================================
+    // PHASE 2: FOUNDATIONAL - Calculator State Variables
+    // ============================================================================
+    let calcExpression = '';  // Existing: Current expression being built
+    
+    // Advanced calculator state variables (Phase 2 - T003)
+    let calculatorMemory = 0;        // Accumulative memory value (M+ adds to this, MC clears, MR recalls)
+    let lastAnswer = 0;              // Previous calculation result (used by Ans button)
+    let inputState = 'normal';       // Current input state: 'normal' | 'waiting_base' | 'waiting_exponent' | 'waiting_root' | 'waiting_radicand' | 'waiting_coefficient'
+    let pendingOperation = null;      // Pending multi-step operation: 'x^y' | 'nth_root' | 'scientific' | null
+    let pendingValue = null;          // First value entered in multi-step operation (base, root value, or coefficient)
+    let shiftMode = false;            // SHIFT button active state (toggles sin/cos/tan to arcsin/arccos/arctan)
+    
+    // ============================================================================
+    // PHASE 2: FOUNDATIONAL - Expression Evaluation (Backend via htmx - T063)
+    // ============================================================================
+    // NOTE: Expression transformation and validation are now handled server-side
+    // See: bloom/calculator_evaluator.py for Python implementation
+    // See: POST /calculator/evaluate endpoint in bloom/routes/student.py
+    //
+    // This follows the htmx architecture pattern: minimal client-side JavaScript,
+    // server-driven processing. The backend handles:
+    // - Expression validation (division by zero, invalid ranges, etc.)
+    // - Expression transformation (degrees/radians, function mapping)
+    // - Safe evaluation with restricted namespace
+    // - Calculator history logging
+    
+    // ============================================================================
+    // PHASE 2: FOUNDATIONAL - Error State Management (T006)
+    // ============================================================================
+    /**
+     * Sets calculator error state and manages UI accordingly
+     * - Displays "Maths Error" message
+     * - Disables memory buttons (M+, MC, MR) when error is active
+     * 
+     * @param {boolean} isError - Whether calculator is in error state
+     */
+    function setErrorState(isError) {
+        const errorDisplay = document.getElementById('calc-error-display');
+        
+        if (isError) {
+            // Show error message above display (UX improvement - don't replace expression)
+            if (errorDisplay) {
+                errorDisplay.classList.remove('hidden');
+            }
+            
+            // Mark expression as error state (but don't replace it in display)
+            calcExpression = 'Maths Error';
+            
+            // Disable memory buttons when error state is active
+            const memoryButtons = ['mplus-btn', 'mclear-btn', 'mrecall-btn'];
+            memoryButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            });
+        } else {
+            // Hide error message
+            if (errorDisplay) {
+                errorDisplay.classList.add('hidden');
+            }
+            
+            // Re-enable memory buttons when error is cleared
+            const memoryButtons = ['mplus-btn', 'mclear-btn', 'mrecall-btn'];
+            memoryButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            });
+        }
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Trigonometric Functions (T016-T020)
+    // ============================================================================
+    function handleShift() {
+        shiftMode = !shiftMode;
+        updateButtonLabels();
+        
+        // Visual feedback: highlight SHIFT button when active
+        const shiftBtn = document.getElementById('shift-btn');
+        if (shiftBtn) {
+            if (shiftMode) {
+                shiftBtn.classList.add('bg-blue-500', 'text-white');
+                shiftBtn.classList.remove('bg-gray-200', 'text-gray-700');
+            } else {
+                shiftBtn.classList.remove('bg-blue-500', 'text-white');
+                shiftBtn.classList.add('bg-gray-200', 'text-gray-700');
+            }
+        }
+    }
+    
+    function updateButtonLabels() {
+        const sinBtn = document.getElementById('sin-btn');
+        const cosBtn = document.getElementById('cos-btn');
+        const tanBtn = document.getElementById('tan-btn');
+        
+        if (sinBtn) sinBtn.textContent = shiftMode ? 'arcsin' : 'sin';
+        if (cosBtn) cosBtn.textContent = shiftMode ? 'arccos' : 'cos';
+        if (tanBtn) tanBtn.textContent = shiftMode ? 'arctan' : 'tan';
+    }
+    
+    function handleSin() {
+        // Auto-wrap current value if it exists (UX improvement)
+        const shouldWrap = calcExpression && calcExpression !== '0' && calcExpression !== 'Maths Error';
+        
+        if (shiftMode) {
+            // Use arcsin
+            if (shouldWrap) {
+                calcExpression = 'asin(' + calcExpression;
+            } else {
+                calcExpression = 'asin(';
+            }
+            shiftMode = false;
+            updateButtonLabels();
+        } else {
+            // Use sin
+            if (shouldWrap) {
+                calcExpression = 'sin(' + calcExpression;
+            } else {
+                calcExpression = 'sin(';
+            }
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleCos() {
+        const shouldWrap = calcExpression && calcExpression !== '0' && calcExpression !== 'Maths Error';
+        
+        if (shiftMode) {
+            if (shouldWrap) {
+                calcExpression = 'acos(' + calcExpression;
+            } else {
+                calcExpression = 'acos(';
+            }
+            shiftMode = false;
+            updateButtonLabels();
+        } else {
+            if (shouldWrap) {
+                calcExpression = 'cos(' + calcExpression;
+            } else {
+                calcExpression = 'cos(';
+            }
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleTan() {
+        const shouldWrap = calcExpression && calcExpression !== '0' && calcExpression !== 'Maths Error';
+        
+        if (shiftMode) {
+            if (shouldWrap) {
+                calcExpression = 'atan(' + calcExpression;
+            } else {
+                calcExpression = 'atan(';
+            }
+            shiftMode = false;
+            updateButtonLabels();
+        } else {
+            if (shouldWrap) {
+                calcExpression = 'tan(' + calcExpression;
+            } else {
+                calcExpression = 'tan(';
+            }
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Powers and Roots (T021-T025)
+    // ============================================================================
+    function handleSquare() {
+        // Square the current display value
+        if (calcExpression === '' || calcExpression === '0' || calcExpression === 'Maths Error') {
+            return;
+        }
+        
+        try {
+            const currentValue = parseFloat(calcExpression) || 0;
+            const squared = currentValue * currentValue;
+            calcExpression = squared.toString();
+            document.getElementById('calc-display').value = calcExpression;
+            lastAnswer = squared;
+        } catch (e) {
+            setErrorState(true);
+        }
+    }
+    
+    function handleXToY() {
+        // Multi-step input: if base already entered, move to exponent entry
+        // Otherwise, set up for base entry
+        if (inputState === 'normal' && calcExpression !== '' && calcExpression !== '0' && calcExpression !== 'Maths Error') {
+            // Base already entered, move to exponent entry
+            pendingValue = parseFloat(calcExpression) || 0;
+            inputState = 'waiting_exponent';
+            pendingOperation = 'x^y';
+            document.getElementById('calc-display').value = 'Enter exponent:';
+            calcExpression = '';
+        } else {
+            // Start fresh - enter base first
+            inputState = 'waiting_base';
+            pendingOperation = 'x^y';
+            document.getElementById('calc-display').value = 'Enter base:';
+            calcExpression = '';
+        }
+    }
+    
+    function handleSqrt() {
+        // Auto-wrap current value if it exists (UX improvement)
+        const shouldWrap = calcExpression && calcExpression !== '0' && calcExpression !== 'Maths Error';
+        
+        if (shouldWrap) {
+            calcExpression = 'sqrt(' + calcExpression;
+        } else {
+            calcExpression = 'sqrt(';
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleCubeRoot() {
+        // Auto-wrap current value if it exists (UX improvement)
+        const shouldWrap = calcExpression && calcExpression !== '0' && calcExpression !== 'Maths Error';
+        
+        if (shouldWrap) {
+            calcExpression = 'cbrt(' + calcExpression;
+        } else {
+            calcExpression = 'cbrt(';
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleNthRoot() {
+        // Multi-step input: if root value already entered, move to radicand entry
+        // Otherwise, set up for root value entry
+        if (inputState === 'normal' && calcExpression !== '' && calcExpression !== '0' && calcExpression !== 'Maths Error') {
+            // Root value already entered, move to radicand entry
+            pendingValue = parseFloat(calcExpression) || 0;
+            inputState = 'waiting_radicand';
+            pendingOperation = 'nth_root';
+            document.getElementById('calc-display').value = 'Enter radicand:';
+            calcExpression = '';
+        } else {
+            // Start fresh - enter root value first
+            inputState = 'waiting_root';
+            pendingOperation = 'nth_root';
+            document.getElementById('calc-display').value = 'Enter root value:';
+            calcExpression = '';
+        }
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Scientific Notation (T026)
+    // ============================================================================
+    function handleScientificNotation() {
+        // Multi-step input: if coefficient already entered, move to exponent entry
+        // Otherwise, set up for coefficient entry
+        if (inputState === 'normal' && calcExpression !== '' && calcExpression !== '0' && calcExpression !== 'Maths Error') {
+            // Coefficient already entered, move to exponent entry
+            pendingValue = parseFloat(calcExpression) || 0;
+            inputState = 'waiting_exponent';
+            pendingOperation = 'scientific';
+            document.getElementById('calc-display').value = 'Enter exponent:';
+            calcExpression = '';
+        } else {
+            // Start fresh - enter coefficient first
+            inputState = 'waiting_coefficient';
+            pendingOperation = 'scientific';
+            document.getElementById('calc-display').value = 'Enter coefficient:';
+            calcExpression = '';
+        }
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Utility Functions (T027-T031)
+    // ============================================================================
+    function handlePi() {
+        calcAppend('π');
+    }
+    
+    function handleReciprocal() {
+        // Calculate 1/x - auto-wrap current value (UX improvement)
+        if (calcExpression === '' || calcExpression === '0' || calcExpression === 'Maths Error') {
+            if (calcExpression === '0') {
+                setErrorState(true); // Division by zero
+            }
+            return;
+        }
+        
+        // Wrap current value: 1/(current)
+        calcExpression = '1/(' + calcExpression + ')';
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleSignChange() {
+        // Toggle sign of current display value
+        if (calcExpression === '' || calcExpression === 'Maths Error') {
+            return;
+        }
+        
+        if (calcExpression === '0') {
+            return; // No change for zero
+        }
+        
+        if (calcExpression.startsWith('-')) {
+            // Remove negative sign
+            calcExpression = calcExpression.substring(1);
+        } else {
+            // Add negative sign
+            calcExpression = '-' + calcExpression;
+        }
+        
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function handleAns() {
+        // Insert last answer into expression
+        if (lastAnswer !== 0) {
+            calcAppend(lastAnswer.toString());
+        } else {
+            calcAppend('0');
+        }
+    }
+    
+    function handleDelete() {
+        // Remove last character from expression
+        if (calcExpression.length > 0 && calcExpression !== 'Maths Error') {
+            calcExpression = calcExpression.slice(0, -1);
+            if (calcExpression === '') {
+                calcExpression = '0';
+            }
+            document.getElementById('calc-display').value = calcExpression;
+        }
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Updated calcClear to handleAllClear (T032)
+    // ============================================================================
+    function handleAllClear() {
+        // Reset all calculator state
+        calcExpression = '0';
+        inputState = 'normal';
+        pendingOperation = null;
+        pendingValue = null;
+        shiftMode = false;
+        setErrorState(false);
+        document.getElementById('calc-display').value = calcExpression;
+        updateButtonLabels();
+        
+        // Reset SHIFT button styling
+        const shiftBtn = document.getElementById('shift-btn');
+        if (shiftBtn) {
+            shiftBtn.classList.remove('bg-blue-500', 'text-white');
+            shiftBtn.classList.add('bg-gray-200', 'text-gray-700');
+        }
+    }
+    
+    // Keep calcClear for backward compatibility (if needed elsewhere)
+    function calcClear() {
+        handleAllClear();
+    }
+    
+    // ============================================================================
+    // PHASE 4: USER STORY 2 - Memory Functions (T041-T043)
+    // ============================================================================
+    function handleMPlus() {
+        // Add current display value to memory (T041, T045)
+        if (calcExpression === 'Maths Error' || calcExpression === 'Error') {
+            return; // Don't allow memory operations on error state
+        }
+        
+        const currentValue = parseFloat(calcExpression) || 0;
+        calculatorMemory += currentValue;
+    }
+    
+    function handleMClear() {
+        // Clear memory (T042)
+        calculatorMemory = 0;
+    }
+    
+    function handleMRecall() {
+        // Recall memory value (T043)
+        if (calculatorMemory === 0) {
+            calcAppend('0');
+        } else {
+            calcAppend(calculatorMemory.toString());
+        }
+    }
+    
+    // ============================================================================
+    // PHASE 3: USER STORY 1 - Multi-Step Input Handling (T033-T034)
+    // ============================================================================
+    function completeMultiStepOperation() {
+        if (pendingOperation === null || pendingValue === null) {
+            // Reset state if incomplete
+            inputState = 'normal';
+            pendingOperation = null;
+            pendingValue = null;
+            return;
+        }
+        
+        const secondValue = parseFloat(calcExpression) || 0;
+        let expr = '';
+        
+        switch (pendingOperation) {
+            case 'x^y':
+                // Construct: base^exponent
+                expr = `${pendingValue}^${secondValue}`;
+                break;
+            case 'nth_root':
+                // Validate: even root of negative number
+                if (pendingValue % 2 === 0 && secondValue < 0) {
+                    setErrorState(true);
+                    inputState = 'normal';
+                    pendingOperation = null;
+                    pendingValue = null;
+                    return;
+                }
+                // Construct: root(rootValue, radicand) → will be transformed to Math.pow(radicand, 1/rootValue)
+                expr = `root(${pendingValue}, ${secondValue})`;
+                break;
+            case 'scientific':
+                // Construct: coefficient * 10^exponent
+                expr = `${pendingValue} * Math.pow(10, ${secondValue})`;
+                // Evaluate directly since it's already in Math format
+                try {
+                    const result = eval(expr);
+                    if (!isFinite(result) || isNaN(result)) {
+                        setErrorState(true);
+                    } else {
+                        calcExpression = result.toString();
+                        document.getElementById('calc-display').value = calcExpression;
+                        lastAnswer = result;
+                    }
+                } catch (e) {
+                    setErrorState(true);
+                }
+                // Reset state
+                inputState = 'normal';
+                pendingOperation = null;
+                pendingValue = null;
+                return;
+            default:
+                inputState = 'normal';
+                pendingOperation = null;
+                pendingValue = null;
+                return;
+        }
+        
+        // For x^y and nth_root, evaluate the constructed expression
+        calcExpression = expr;
+        
+        // Reset state before evaluation
+        inputState = 'normal';
+        pendingOperation = null;
+        pendingValue = null;
+        
+        // Evaluate the expression
+        const validation = validateExpression(calcExpression);
+        if (!validation.valid) {
+            setErrorState(true);
+            return;
+        }
+        
+        try {
+            const sanitized = calcExpression.replace(/[^0-9+\-*/.()πsincotanasqrtbrt]/g, '');
+            const transformed = transformExpression(sanitized);
+            const result = eval(transformed);
+            
+            if (!isFinite(result) || isNaN(result)) {
+                setErrorState(true);
+                return;
+            }
+            
+            lastAnswer = result;
+            calcExpression = result.toString();
+            document.getElementById('calc-display').value = calcExpression;
+        } catch (e) {
+            setErrorState(true);
+        }
+    }
+    
+    function calcAppend(value) {
+        // Handle multi-step input states (T033)
+        if (inputState === 'waiting_base' || inputState === 'waiting_root' || inputState === 'waiting_coefficient') {
+            // Building first value - allow number entry only
+            if (value.match(/[0-9.]/)) {
+                if (calcExpression === '' || calcExpression.startsWith('Enter')) {
+                    calcExpression = value;
+                } else {
+                    calcExpression += value;
+                }
+                document.getElementById('calc-display').value = calcExpression;
+                return;
+            }
+            // Ignore operators in first value entry mode
+            return;
+        } else if (inputState === 'waiting_exponent' || inputState === 'waiting_radicand') {
+            // Building second value - allow number entry only
+            if (value.match(/[0-9.]/)) {
+                if (calcExpression === '' || calcExpression.startsWith('Enter')) {
+                    calcExpression = value;
+                } else {
+                    calcExpression += value;
+                }
+                document.getElementById('calc-display').value = calcExpression;
+                return;
+            }
+            // Ignore operators in second value entry mode (except = handled in calcEvaluate)
+            return;
+        }
+        
+        // Normal input mode
+        if (calcExpression === '0' || calcExpression === 'Error' || calcExpression === 'Maths Error' || calcExpression.startsWith('Enter')) {
+            calcExpression = value;
+        } else {
+            calcExpression += value;
+        }
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    function calcClear() {
+        calcExpression = '0';
+        document.getElementById('calc-display').value = calcExpression;
+    }
+    
+    // ============================================================================
+    // PHASE 2: FOUNDATIONAL - Updated calcEvaluate() (T007, T040)
+    // PHASE 3: USER STORY 1 - Multi-step operation completion (T034)
+    // ============================================================================
+    function calcEvaluate() {
+        // Handle multi-step operations (T034)
+        if (inputState === 'waiting_exponent' || inputState === 'waiting_radicand') {
+            // Complete the multi-step operation
+            completeMultiStepOperation();
+            return;
+        }
+        
+        // Handle first value entry in multi-step mode
+        if (inputState === 'waiting_base' || inputState === 'waiting_root' || inputState === 'waiting_coefficient') {
+            // Store first value and move to next state
+            pendingValue = parseFloat(calcExpression) || 0;
+            
+            if (inputState === 'waiting_base') {
+                inputState = 'waiting_exponent';
+                pendingOperation = 'x^y';
+                document.getElementById('calc-display').value = 'Enter exponent:';
+            } else if (inputState === 'waiting_root') {
+                inputState = 'waiting_radicand';
+                pendingOperation = 'nth_root';
+                document.getElementById('calc-display').value = 'Enter radicand:';
+            } else if (inputState === 'waiting_coefficient') {
+                inputState = 'waiting_exponent';
+                pendingOperation = 'scientific';
+                document.getElementById('calc-display').value = 'Enter exponent:';
+            }
+            
+            calcExpression = '';
+            return;
+        }
+        
+        // Clear any previous error state
+        setErrorState(false);
+        
+        // Auto-close unclosed parentheses (Casio-style UX improvement)
+        // Count opening and closing parentheses
+        const openParens = (calcExpression.match(/\(/g) || []).length;
+        const closeParens = (calcExpression.match(/\)/g) || []).length;
+        
+        // If there are unclosed parentheses, append closing ones at the end
+        if (openParens > closeParens) {
+            const missingClosing = openParens - closeParens;
+            calcExpression += ')'.repeat(missingClosing);
+            document.getElementById('calc-display').value = calcExpression;
+        }
+        
+        // Call backend API for evaluation using htmx (T063)
+        // Set the expression value and trigger htmx form submission
+        document.getElementById('calc-expression-input').value = calcExpression;
+        
+        // Use htmx to submit the form
+        const form = document.getElementById('calc-form');
+        htmx.trigger(form, 'submit');
+        
+        // Listen for htmx response
+        form.addEventListener('htmx:afterRequest', function(event) {
+            const xhr = event.detail.xhr;
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                
+                if (data.error) {
+                    // Server returned an error (validation failed or math error)
+                    // Keep the expression visible in display, show error above (UX improvement)
+                    setErrorState(true);
+                    // Don't update the display - user can see what they typed
+                } else if (data.result !== undefined) {
+                    // Successful evaluation
+                    const result = data.result;
+                    
+                    // Store result for Ans button (T040)
+                    lastAnswer = result;
+                    
+                    // Update expression and display with result
+                    calcExpression = result.toString();
+                    document.getElementById('calc-display').value = calcExpression;
+                }
+            } else {
+                // Network error or server error
+                console.error('Calculator evaluation error:', xhr.status);
+                setErrorState(true);
+            }
+        }, { once: true }); // Remove listener after one use
+    }
+    
+    // Calculator toggle functionality
+    function toggleCalculator() {
+        const calcContainer = document.getElementById('calculator-container');
+        const openBtn = document.getElementById('calc-open-btn');
+        
+        if (calcContainer && openBtn) {
+            if (calcContainer.classList.contains('hidden')) {
+                // Show calculator
+                calcContainer.classList.remove('hidden');
+                openBtn.classList.add('hidden');
+            } else {
+                // Hide calculator
+                calcContainer.classList.add('hidden');
+                openBtn.classList.remove('hidden');
+            }
+        }
+    }
+    
+    // Initialize calculator state on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const calcContainer = document.getElementById('calculator-container');
+        const openBtn = document.getElementById('calc-open-btn');
+        
+        // Show calculator by default if it exists
+        if (calcContainer && openBtn) {
+            calcContainer.classList.remove('hidden');
+            openBtn.classList.add('hidden');
+        }
+    });
+</script>
+{% endblock %}
+

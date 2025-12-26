@@ -1,14 +1,14 @@
 <!--
 Sync Impact Report:
-- Version: NEW → 1.0.0
-- Type: MAJOR (initial constitution)
-- Modified principles: N/A (new constitution)
-- Added sections: Core Principles (5), Technology Constraints, Development Workflow, Governance
+- Version: 1.0.0 → 1.1.0
+- Type: MINOR (expanded testing policy guidance)
+- Modified principles: Testing Policy (expanded with unit test requirements and scope limitations)
+- Added sections: N/A
 - Removed sections: N/A
 - Templates requiring updates:
-  ✅ plan-template.md - Reviewed, compatible (constitution check section will adapt)
-  ✅ spec-template.md - Reviewed, compatible (requirements align with simplicity focus)
-  ✅ tasks-template.md - Reviewed, compatible (task organization supports rapid iteration)
+  ✅ plan-template.md - Reviewed, compatible (testing section will reference updated policy)
+  ✅ spec-template.md - Reviewed, compatible (no changes needed)
+  ✅ tasks-template.md - Reviewed, compatible (test task generation aligns with new policy)
 - Follow-up TODOs: None
 -->
 
@@ -81,7 +81,7 @@ UI MUST be eye-pleasing but simple—no complex frameworks or heavy dependencies
 **Stack Philosophy**: Minimize layers, maximize Python stdlib.
 
 - **Language**: Python 3.13+ (leverage modern features: match, type hints)
-- **Web Framework**: FastAPI or Flask—whichever ships a working endpoint fastest
+- **Web Framework**: FastAPI or Flask—whichever ships a working endpoint fastest, with HTMX for interactivity
 - **Frontend**: HTML + CSS + vanilla JavaScript OR Alpine.js/htmx for interactivity (no React/Vue unless justified by specific need)
 - **LLM Integration**: Direct API calls (OpenAI, Anthropic, etc.)—no LangChain unless chaining is proven necessary
 - **Database**: Start with JSON files or SQLite; only graduate to Postgres if scale requires it
@@ -92,6 +92,7 @@ UI MUST be eye-pleasing but simple—no complex frameworks or heavy dependencies
 - Background task queues (use async/await first)
 - Microservices (monolith until proven bottleneck)
 - Docker multi-stage builds (single-stage or no Docker until deployment)
+- Frontend javascript unless HTMX cannot serve
 
 ## Development Workflow
 
@@ -109,12 +110,15 @@ UI MUST be eye-pleasing but simple—no complex frameworks or heavy dependencies
 - Code committed with clear message
 
 **Testing Policy**:
-- Tests are OPTIONAL by default
-- Write tests ONLY for:
-  - Logic that broke twice
-  - Security/auth flows
-  - Parsing/validation that caused user issues
-- Prefer integration/smoke tests over unit tests (test real behavior)
+- Unit tests MUST be written for all functions except where that function depends on an LLM.
+- Keep tests simple: if a test requires too many mocks or becomes too complex, it adds no value and should be simplified or removed.
+- Test scope:
+  - ✅ Unit tests for backend logic (parsing, validation, calculations, data transformations)
+  - ✅ Unit tests for functions that broke twice (proven to need protection)
+  - ✅ Unit tests for security/auth flows
+  - ❌ Do NOT test UI components or interactions
+  - ❌ Do NOT test API endpoints (test the underlying logic instead)
+- Tests should not attempt to cover every edge case by default—focus on happy path and known failure modes.
 
 **Commit Discipline**:
 - Commit working code frequently (every 30-60 min)
@@ -140,4 +144,4 @@ UI MUST be eye-pleasing but simple—no complex frameworks or heavy dependencies
 - When in doubt, ask: "Does this make the demo simpler and faster?"
 - If constitution blocks progress, amend it (see above)—don't work around it
 
-**Version**: 1.0.0 | **Ratified**: 2025-11-24 | **Last Amended**: 2025-11-24
+**Version**: 1.1.0 | **Ratified**: 2025-11-24 | **Last Amended**: 2025-01-27
