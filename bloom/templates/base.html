@@ -66,6 +66,16 @@
         .calc-btn-clear {
             @apply calc-btn bg-red-500 text-white hover:bg-red-600;
         }
+        
+        /* Calculator container transitions */
+        #calculator-container {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #calculator-container.hidden {
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
     </style>
     
     {% block extra_head %}{% endblock %}
