@@ -292,62 +292,9 @@ function openImageModal(imageUrl) {
             </div>
         </div>
         
-        <!-- Calculator (conditionally visible, positioned to the right) -->
+        <!-- Calculator (htmx-driven) -->
         {% if calculator_visible %}
-        <div id="calculator-container" class="w-80 bg-white rounded-lg shadow-lg border border-gray-200 p-4 h-[calc(100vh-12rem)] flex flex-col">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-900">Calculator</h3>
-                <button 
-                    id="calc-close-btn"
-                    onclick="toggleCalculator()"
-                    class="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
-                    title="Close calculator"
-                >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <div class="flex-1 flex flex-col justify-center">
-                <div class="text-right mb-3">
-                    <input 
-                        type="text" 
-                        id="calc-display" 
-                        readonly 
-                        value="0"
-                        class="w-full px-4 py-3 text-2xl font-mono text-right bg-gray-100 rounded border border-gray-300"
-                    >
-                </div>
-                <div class="grid grid-cols-4 gap-2">
-                    <!-- Calculator buttons -->
-                    <button class="calc-btn-clear" onclick="calcClear()">C</button>
-                    <button class="calc-btn-operator" onclick="calcAppend('/')">/</button>
-                    <button class="calc-btn-operator" onclick="calcAppend('*')">×</button>
-                    <button class="calc-btn-operator" onclick="calcAppend('-')">-</button>
-                    
-                    <button class="calc-btn-number" onclick="calcAppend('7')">7</button>
-                    <button class="calc-btn-number" onclick="calcAppend('8')">8</button>
-                    <button class="calc-btn-number" onclick="calcAppend('9')">9</button>
-                    <button class="calc-btn-operator" onclick="calcAppend('+')">+</button>
-                    
-                    <button class="calc-btn-number" onclick="calcAppend('4')">4</button>
-                    <button class="calc-btn-number" onclick="calcAppend('5')">5</button>
-                    <button class="calc-btn-number" onclick="calcAppend('6')">6</button>
-                    <button class="calc-btn-operator" onclick="calcAppend('(')">(</button>
-                    
-                    <button class="calc-btn-number" onclick="calcAppend('1')">1</button>
-                    <button class="calc-btn-number" onclick="calcAppend('2')">2</button>
-                    <button class="calc-btn-number" onclick="calcAppend('3')">3</button>
-                    <button class="calc-btn-operator" onclick="calcAppend(')')">)</button>
-                    
-                    <button class="calc-btn-number" onclick="calcAppend('0')">0</button>
-                    <button class="calc-btn-number" onclick="calcAppend('.')">.</button>
-                    <button class="calc-btn-equals col-span-2" onclick="calcEvaluate()">=</button>
-                </div>
-                <p class="text-xs text-gray-500 text-center mt-3">Calculator available for numerical problems</p>
-            </div>
-        </div>
+        {% include 'calculator_htmx.html' %}
         {% endif %}
     </div>
 </div>
@@ -493,41 +440,12 @@ function openImageModal(imageUrl) {
         }
     });
     
-    // Calculator functions
-    let calcExpression = '';
-    
-    function calcAppend(value) {
-        if (calcExpression === '0' || calcExpression === 'Error') {
-            calcExpression = value;
-        } else {
-            calcExpression += value;
-        }
-        document.getElementById('calc-display').value = calcExpression;
-    }
-    
-    function calcClear() {
-        calcExpression = '0';
-        document.getElementById('calc-display').value = calcExpression;
-    }
-    
-    function calcEvaluate() {
-        try {
-            // Sanitize input (only allow numbers and basic operators)
-            const sanitized = calcExpression.replace(/[^0-9+\-*/.()]/g, '');
-            
-            // Evaluate (note: eval is safe here because we sanitized input)
-            const result = eval(sanitized);
-            
-            calcExpression = result.toString();
-            document.getElementById('calc-display').value = calcExpression;
-            
-            // TODO: Log calculation to server
-            // This would be sent via htmx to /calculator/log endpoint
-        } catch (e) {
-            calcExpression = 'Error';
-            document.getElementById('calc-display').value = 'Error';
-        }
-    }
+    // ============================================================================
+    // CALCULATOR - htmx-driven (see calculator_htmx.html)
+    // ============================================================================
+    // Calculator logic has been moved to the backend (bloom/calculator_state.py)
+    // Each button press triggers POST /calculator/button with htmx
+    // Server maintains state and returns updated HTML fragments
     
     // Calculator toggle functionality
     function toggleCalculator() {
