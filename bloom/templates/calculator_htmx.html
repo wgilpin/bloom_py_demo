@@ -22,30 +22,21 @@
             
             <!-- Display (editable) -->
             <div class="text-right mb-3">
-                <input 
-                    type="text" 
-                    id="calc-display" 
-                    name="expression"
-                    value="0"
-                    hx-post="/calculator/sync"
-                    hx-trigger="change"
-                    hx-include="#calc-form-data"
-                    hx-target="#calc-display-container"
-                    hx-swap="outerHTML"
-                    onkeypress="if(event.key==='Enter'){event.preventDefault(); document.getElementById('calc-eval-btn').click();}"
-                    class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
-                    placeholder="0"
-                >
+            <input 
+                type="text" 
+                id="calc-display" 
+                name="expression"
+                value="0"
+                hx-post="/calculator/button"
+                hx-trigger="keyup[key=='Enter']"
+                hx-vals='{"button": "="}'
+                hx-include="#calc-form-data,#calc-display"
+                hx-target="#calc-display-container"
+                hx-swap="outerHTML"
+                class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
+                placeholder="0"
+            >
             </div>
-            
-            <!-- Hidden = button for Enter key trigger -->
-            <button id="calc-eval-btn" 
-                    style="display:none"
-                    hx-post="/calculator/button" 
-                    hx-vals='{"button": "="}' 
-                    hx-include="#calc-form-data,#calc-display"
-                    hx-target="#calc-display-container"
-                    hx-swap="outerHTML"></button>
         </div>
         
         <!-- Hidden form for htmx (session_id) -->
@@ -58,31 +49,31 @@
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "SHIFT"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">SHIFT</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "π"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">π</button>
             <button class="calc-btn-memory" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "MC"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">MC</button>
             <button class="calc-btn-memory" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "MR"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">MR</button>
             <button class="calc-btn-memory" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "M+"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">M+</button>
             
@@ -90,31 +81,31 @@
             <button id="sin-btn" class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "sin"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">sin</button>
             <button id="cos-btn" class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "cos"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">cos</button>
             <button id="tan-btn" class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "tan"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">tan</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "("}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">(</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": ")"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">)</button>
             
@@ -122,31 +113,31 @@
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "x^2"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">x²</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "x^y"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">x^y</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "sqrt"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">√</button>
             <button class="calc-btn-clear" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "AC"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">AC</button>
             <button class="calc-btn-clear" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "DEL"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">DEL</button>
             
@@ -154,31 +145,31 @@
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "7"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">7</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "8"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">8</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "9"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">9</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "1/x"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">1/x</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "/"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">/</button>
             
@@ -186,31 +177,31 @@
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "4"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">4</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "5"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">5</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "6"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">6</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "x10^x"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">×10^x</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "*"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">*</button>
             
@@ -218,31 +209,31 @@
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "1"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">1</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "2"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">2</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "3"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">3</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "+/-"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">+/-</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "-"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">-</button>
             
@@ -250,35 +241,47 @@
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "0"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">0</button>
             <button class="calc-btn-number" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "."}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">.</button>
             <button class="calc-btn-function" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "Ans"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">Ans</button>
             <button class="calc-btn-equals" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "="}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">=</button>
             <button class="calc-btn-operator" 
                     hx-post="/calculator/button" 
                     hx-vals='{"button": "+"}' 
-                    hx-include="#calc-form-data"
+                    hx-include="#calc-form-data,#calc-display"
                     hx-target="#calc-display-container"
                     hx-swap="outerHTML">+</button>
         </div>
         <p class="text-xs text-gray-500 text-center mt-3">Calculator available for numerical problems</p>
     </div>
 </div>
+
+<script>
+// Refocus display input after htmx swaps (so Enter works after button clicks)
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'calc-display-container') {
+        const display = document.getElementById('calc-display');
+        if (display) {
+            display.focus();
+        }
+    }
+});
+</script>
 

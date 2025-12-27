@@ -337,3 +337,5 @@ class CalculatorState:
         self.expression = str(self.memory) if self.memory != 0 else '0'
         return {'display': self.expression, 'error': self.error_message}
 
+
+

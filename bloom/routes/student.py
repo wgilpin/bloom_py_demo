@@ -940,25 +940,16 @@ async def calculator_button_press(
                 id="calc-display" 
                 name="expression"
                 value="{response['display']}"
-                hx-post="/calculator/sync"
-                hx-trigger="change"
-                hx-include="#calc-form-data"
+                hx-post="/calculator/button"
+                hx-trigger="keyup[key=='Enter']"
+                hx-vals='{{"button": "="}}'
+                hx-include="#calc-form-data,#calc-display"
                 hx-target="#calc-display-container"
                 hx-swap="outerHTML"
-                onkeypress="if(event.key==='Enter'){{event.preventDefault(); document.getElementById('calc-eval-btn').click();}}"
                 class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
                 placeholder="0"
             >
         </div>
-        
-        <!-- Hidden = button for Enter key trigger -->
-        <button id="calc-eval-btn" 
-                style="display:none"
-                hx-post="/calculator/button" 
-                hx-vals='{{"button": "="}}'
-                hx-include="#calc-form-data,#calc-display"
-                hx-target="#calc-display-container"
-                hx-swap="outerHTML"></button>
     </div>
     """
     
@@ -1029,25 +1020,16 @@ async def calculator_sync_expression(
                 id="calc-display" 
                 name="expression"
                 value="{calc_state.expression}"
-                hx-post="/calculator/sync"
-                hx-trigger="change"
-                hx-include="#calc-form-data"
+                hx-post="/calculator/button"
+                hx-trigger="keyup[key=='Enter']"
+                hx-vals='{{"button": "="}}'
+                hx-include="#calc-form-data,#calc-display"
                 hx-target="#calc-display-container"
                 hx-swap="outerHTML"
-                onkeypress="if(event.key==='Enter'){{event.preventDefault(); document.getElementById('calc-eval-btn').click();}}"
                 class="w-full px-4 py-3 text-2xl font-mono text-right bg-white rounded border border-gray-300 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors"
                 placeholder="0"
             >
         </div>
-        
-        <!-- Hidden = button for Enter key trigger -->
-        <button id="calc-eval-btn" 
-                style="display:none"
-                hx-post="/calculator/button" 
-                hx-vals='{{"button": "="}}'
-                hx-include="#calc-form-data,#calc-display"
-                hx-target="#calc-display-container"
-                hx-swap="outerHTML"></button>
     </div>
     """
     
