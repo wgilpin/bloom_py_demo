@@ -438,3 +438,5 @@ if (inputState === 'waiting_coefficient') {
 
 All decisions prioritize simplicity and align with constitution principles. No new dependencies required.
 
+
+

@@ -265,3 +265,5 @@ After verifying all functions work:
 3. Check that tutor can see calculator history in feedback
 4. Perform manual smoke test of full tutoring session with calculator
 
+
+

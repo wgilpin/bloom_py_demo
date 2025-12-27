@@ -132,3 +132,5 @@ User Input → Button Handler → State Update → Expression Building → Valid
 
 This feature requires **no database schema changes**. Calculator state is JavaScript session-scoped, and calculator history uses the existing `calculator_history` table with expression text capturing all function usage.
 
+
+
